@@ -11,6 +11,7 @@ A browser-based voice training app with real-time pitch detection, spectrogram v
 - **7-stage guided routine** — Warm-up, Counting, Blend Up/Down, Sentences (Harvard corpus), Resonance (vowel sustain), Free Practice
 - **Reference tone** — triangle wave with adjustable volume, hold-to-play on guided stages
 - **Custom reference lines** — right-click the graph to pin lines at any frequency, each with a unique color
+- **Pause** — press Space to freeze the graph for analysis, press again to resume
 - **Session & exercise recording** via MediaRecorder with download support
 - **Single HTML file** — no build step, no dependencies
 

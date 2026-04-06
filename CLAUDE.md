@@ -18,7 +18,7 @@ This is a **single-file HTML app** (`index.html`). No build step, no framework, 
 10. **Custom reference lines** — `customLines` array, right-click to pin, per-line colors, chip list in header
 11. **Stage definitions** — `STAGES` array and per-stage constants (`WARMUP_NOTES`, `COUNT_NOTES`, `TARGET_ZONE`, `VOWELS`)
 12. **Stage rendering** — `renderCurrentStage()` with a switch on stage ID, each stage has its own timer/substep logic
-13. **Main loop** — `mainLoop()` runs via `requestAnimationFrame`, handles pitch detection, UI updates, and graph/spectrogram rendering
+13. **Main loop** — `mainLoop()` runs via `requestAnimationFrame`, handles pitch detection, UI updates, and graph/spectrogram rendering. `graphPaused` flag freezes rendering (spacebar toggle); on unpause, `spectroLastColTime` is reset to avoid catch-up burst.
 
 ## How to Customize the Training Routine
 

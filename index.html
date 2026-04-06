@@ -151,6 +151,7 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
     <div style="margin-top:6px;"><b style="color:var(--accent);">Click &amp; hold</b> on the graph to see the note at your cursor position.</div>
     <div style="margin-top:6px;"><b style="color:var(--accent);">Right-click</b> to pin a reference line at any frequency. Each line gets its own color and appears in both views. Remove lines individually or clear all from the header.</div>
     <div style="margin-top:6px;"><b style="color:var(--accent);">Tone volume</b> slider controls the reference tone loudness during guided exercises.</div>
+    <div style="margin-top:6px;"><b style="color:var(--accent);">Spacebar</b> pauses/unpauses the graph so you can analyze what's on screen.</div>
     <div style="margin-top:6px;"><b style="color:var(--accent);">Record</b> your full session or individual exercises for playback.</div>
   </div>
   <button class="primary start-btn" id="startBtn">Start Practice Session</button>
@@ -1502,7 +1503,24 @@ function classifyZone(freq, zLow, zHigh) {
 
 // ─── MAIN LOOP ───────────────────────────────────────────────────────
 let animFrame = null;
+let graphPaused = false;
+
+function drawPauseOverlay() {
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = 'rgba(13,17,23,0.55)';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('PAUSED — press Space to resume', w / 2, h / 2);
+}
+
 function mainLoop() {
+  if (graphPaused) {
+    drawPauseOverlay();
+    animFrame = requestAnimationFrame(mainLoop);
+    return;
+  }
   // In spectro mode, skip O(n²) autocorrelation — use O(n) FFT peak instead
   let rawFreq;
   if (vizMode === 'spectro' && analyser) {
@@ -1671,6 +1689,16 @@ document.getElementById('startBtn').addEventListener('click', async () => {
 
   renderCustomLinesList();
 
+  // Spacebar pause/unpause
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && document.getElementById('main').style.display === 'block') {
+      e.preventDefault();
+      graphPaused = !graphPaused;
+      // When unpausing, reset spectro time anchor so it doesn't try to catch up
+      if (!graphPaused) spectroLastColTime = performance.now();
+    }
+  });
+
   animFrame = requestAnimationFrame(mainLoop);
 });
 
@@ -1710,6 +1738,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.6.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.7.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
