@@ -1114,13 +1114,15 @@ function rebuildSpectrogram() {
   }
   const cd = spectroCol.data;
 
-  // Walk through buffer slots and map each to its pixel column (no approximation)
+  // Walk through buffer slots newest-to-oldest, fill all pixel columns each slot owns
+  let nextCol = spectroPlotW; // right edge; each slot fills from its col to nextCol-1
   for (let i = 0; i < uniCount; i++) {
     const idx = (uniHead - 1 - i + UNI_CAP) % UNI_CAP;
     const t = uniTimes[idx];
-    if (t < windowStart) break; // older than window, stop
+    if (t < windowStart) break;
     const col = Math.round((t - windowStart) * pxPerMs);
-    if (col < 0 || col >= spectroPlotW) continue;
+    if (col < 0) break;
+    if (col >= spectroPlotW) { nextCol = col; continue; }
 
     const offset = idx * uniBinCount;
     for (let y = 0; y < plotH; y++) {
@@ -1134,8 +1136,13 @@ function rebuildSpectrogram() {
       const i2 = y << 2;
       cd[i2] = lut[lutIdx]; cd[i2|1] = lut[lutIdx+1]; cd[i2|2] = lut[lutIdx+2]; cd[i2|3] = 255;
     }
-    spectroOCtx.putImageData(spectroCol, col, 0);
-    spectroOCtx.putImageData(spectroCol, col + spectroPlotW, 0);
+    // Fill all columns from this slot to the next newer slot
+    const endCol = Math.min(nextCol, spectroPlotW);
+    for (let c = col; c < endCol; c++) {
+      spectroOCtx.putImageData(spectroCol, c, 0);
+      spectroOCtx.putImageData(spectroCol, c + spectroPlotW, 0);
+    }
+    nextCol = col;
   }
   spectroCursor = 0;
   spectroLastColTime = now;
@@ -2143,6 +2150,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.11.1 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.11.2 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
