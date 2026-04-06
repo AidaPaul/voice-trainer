@@ -65,7 +65,14 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 .note-freq { font-size: 13px; color: var(--text2); font-family: monospace; }
 .target-display { text-align: right; }
 .target-label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
-.target-note { font-size: 32px; font-weight: 600; color: var(--target); font-family: monospace; }
+.target-note { font-size: 32px; font-weight: 600; color: var(--target); font-family: monospace; cursor: pointer; }
+.target-note:hover { opacity: 0.8; }
+.target-picker { display: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: absolute; right: 24px; top: 60px; z-index: 20; min-width: 220px; }
+.target-picker.open { display: block; }
+.target-picker label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 4px; }
+.target-picker select { width: 100%; margin-bottom: 8px; }
+.target-picker .tp-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.target-picker .tp-row select { flex: 1; }
 .vol-control { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .vol-control label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
 .vol-control input[type=range] { width: 80px; accent-color: var(--target); }
@@ -202,12 +209,37 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
         </div>
       </div>
       <div class="custom-lines" id="customLinesList"></div>
-      <div class="target-display">
-        <div class="target-label">Target</div>
+      <div class="target-display" style="position:relative;">
+        <div class="target-label">Target <span style="font-size:10px;opacity:0.6;">(click to edit)</span></div>
         <div class="target-note" id="targetNote">--</div>
         <div class="vol-control">
           <label>Tone vol</label>
           <input type="range" id="refVol" min="0" max="100" value="60">
+        </div>
+        <div class="target-picker" id="targetPicker">
+          <label>Mode</label>
+          <select id="tpMode">
+            <option value="single">Single note</option>
+            <option value="range">Note range</option>
+          </select>
+          <div id="tpSingle">
+            <label>Note</label>
+            <select id="tpNote"></select>
+          </div>
+          <div id="tpRange" style="display:none;">
+            <div class="tp-row">
+              <label style="min-width:30px;">Low</label>
+              <select id="tpLow"></select>
+            </div>
+            <div class="tp-row">
+              <label style="min-width:30px;">High</label>
+              <select id="tpHigh"></select>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <button class="sm primary" id="tpApply">Apply</button>
+            <button class="sm" id="tpReset">Reset to stage default</button>
+          </div>
         </div>
       </div>
     </div>
@@ -956,12 +988,14 @@ function renderSpectrogram() {
     lastNoteLabelY = y;
   }
 
-  // Target zone
+  // Target zone (fill + dashed lines, matching pitch view)
   if (graphZone) {
     const zLowF = NOTE_FREQ_MAP[graphZone.low];
     const zHighF = NOTE_FREQ_MAP[graphZone.high];
     const yHigh = ((logMaxF - Math.log2(zHighF)) / (logMaxF - logMinF)) * plotH;
     const yLow = ((logMaxF - Math.log2(zLowF)) / (logMaxF - logMinF)) * plotH;
+    ctx.fillStyle = 'rgba(240,136,62,0.07)';
+    ctx.fillRect(leftMargin, yHigh, plotW, yLow - yHigh);
     ctx.strokeStyle = 'rgba(240,136,62,0.4)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
@@ -1780,6 +1814,60 @@ document.getElementById('startBtn').addEventListener('click', async () => {
 
   renderCustomLinesList();
 
+  // Target picker
+  const tpNoteOpts = ALL_NOTES.map(n => `<option value="${n}">${n}</option>`).join('');
+  document.getElementById('tpNote').innerHTML = tpNoteOpts;
+  document.getElementById('tpLow').innerHTML = tpNoteOpts;
+  document.getElementById('tpHigh').innerHTML = tpNoteOpts;
+
+  let stageDefaultTarget = null; // stores what renderCurrentStage set
+
+  document.getElementById('targetNote').addEventListener('click', () => {
+    const picker = document.getElementById('targetPicker');
+    picker.classList.toggle('open');
+  });
+
+  document.getElementById('tpMode').addEventListener('change', e => {
+    document.getElementById('tpSingle').style.display = e.target.value === 'single' ? '' : 'none';
+    document.getElementById('tpRange').style.display = e.target.value === 'range' ? '' : 'none';
+  });
+
+  document.getElementById('tpApply').addEventListener('click', () => {
+    const mode = document.getElementById('tpMode').value;
+    if (mode === 'single') {
+      const note = document.getElementById('tpNote').value;
+      graphTargets = [note];
+      graphZone = null;
+      targetNoteKey = note;
+      graphCenterFreq = NOTE_FREQ_MAP[note];
+      document.getElementById('targetNote').textContent = note;
+    } else {
+      const low = document.getElementById('tpLow').value;
+      const high = document.getElementById('tpHigh').value;
+      graphTargets = [];
+      graphZone = { low, high };
+      targetNoteKey = null;
+      const midFreq = Math.sqrt(NOTE_FREQ_MAP[low] * NOTE_FREQ_MAP[high]);
+      graphCenterFreq = midFreq;
+      document.getElementById('targetNote').textContent = low + '\u2013' + high;
+    }
+    document.getElementById('targetPicker').classList.remove('open');
+  });
+
+  document.getElementById('tpReset').addEventListener('click', () => {
+    document.getElementById('targetPicker').classList.remove('open');
+    renderCurrentStage();
+  });
+
+  // Close picker when clicking outside
+  document.addEventListener('click', e => {
+    const picker = document.getElementById('targetPicker');
+    const target = document.getElementById('targetNote');
+    if (picker.classList.contains('open') && !picker.contains(e.target) && e.target !== target) {
+      picker.classList.remove('open');
+    }
+  });
+
   // Spacebar pause/unpause
   document.addEventListener('keydown', e => {
     if (e.code === 'Space' && document.getElementById('main').style.display === 'block') {
@@ -1837,6 +1925,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.9.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.10.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
