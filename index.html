@@ -948,38 +948,21 @@ function yToFreq(yCanvas) {
 }
 
 function freqToNoteLabel(freq) {
-  // Try exact match first, fall back to closest note in ALL_NOTES
-  let info = freqToNote(freq);
-  if (!info) {
-    let closestNote = null, closestDist = Infinity;
-    for (const n of ALL_NOTES) {
-      const d = Math.abs(Math.log2(freq / NOTE_FREQ_MAP[n]));
-      if (d < closestDist) { closestDist = d; closestNote = n; }
-    }
-    if (closestNote) {
-      const cents = Math.round(1200 * Math.log2(freq / NOTE_FREQ_MAP[closestNote]));
-      info = { note: closestNote, cents, freq };
-    } else {
-      return { note: '?', label: freq.toFixed(0) + ' Hz' };
-    }
-  }
-  const cStr = info.cents === 0 ? '' : (info.cents > 0 ? '+' : '') + info.cents + 'c';
-  return { note: info.note, label: info.note + (cStr ? ' ' + cStr : '') + ' (' + freq.toFixed(1) + ' Hz)' };
+  const note = freqToNoteName(freq);
+  const noteF = noteNameToFreq(note);
+  const cents = Math.round(1200 * Math.log2(freq / noteF));
+  const cStr = cents === 0 ? '' : (cents > 0 ? '+' : '') + cents + 'c';
+  return { note, label: note + (cStr ? ' ' + cStr : '') + ' (' + freq.toFixed(1) + ' Hz)' };
 }
 
 function addCustomLine(freq) {
-  // Snap to nearest note by log-frequency distance (works across full spectrogram range)
-  let closestNote = null, closestDist = Infinity;
-  for (const n of ALL_NOTES) {
-    const d = Math.abs(Math.log2(freq / NOTE_FREQ_MAP[n]));
-    if (d < closestDist) { closestDist = d; closestNote = n; }
-  }
-  if (!closestNote) return;
-  if (customLines.some(l => l.note === closestNote)) return;
-  const snappedFreq = NOTE_FREQ_MAP[closestNote];
+  // Snap to nearest semitone (unbounded — works at any frequency)
+  const note = freqToNoteName(freq);
+  const snappedFreq = noteNameToFreq(note);
+  if (customLines.some(l => l.note === note)) return;
   const color = LINE_COLORS[lineColorIdx % LINE_COLORS.length];
   lineColorIdx++;
-  customLines.push({ freq: snappedFreq, note: closestNote, label: closestNote + ' (' + Math.round(snappedFreq) + ' Hz)', color });
+  customLines.push({ freq: snappedFreq, note, label: note + ' (' + Math.round(snappedFreq) + ' Hz)', color });
   renderCustomLinesList();
 }
 
@@ -1782,6 +1765,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.8.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.8.1 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
