@@ -157,6 +157,13 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 <div id="splash">
   <h1>Voice Training</h1>
   <p>Real-time pitch detection, guided exercises, and recording. Follow your instructor's 15-minute practice routine through 7 training stages.</p>
+  <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);">
+    <span>Default view:</span>
+    <div class="viz-toggle">
+      <button id="defaultVizPitch" class="active">Pitch</button>
+      <button id="defaultVizSpectro">Spectrogram</button>
+    </div>
+  </div>
   <div style="text-align:left;max-width:460px;font-size:13px;color:var(--text2);line-height:1.7;margin:4px 0 8px;">
     <div style="font-size:14px;color:var(--text);font-weight:600;margin-bottom:6px;">How to use</div>
     <div><b style="color:var(--accent);">Pitch / Spectrogram</b> &mdash; toggle between a pitch tracker and a frequency spectrogram. Both show a 10-second rolling window.</div>
@@ -507,6 +514,36 @@ function applyPlaybackDevice(audioEl) {
 }
 
 populateDevices();
+
+// ─── DEFAULT VIZ PREFERENCE (cookie) ────────────────────────────────
+function getVizPref() {
+  const m = document.cookie.match(/(?:^|; )vizMode=(\w+)/);
+  return m ? m[1] : 'pitch';
+}
+function setVizPref(mode) {
+  document.cookie = 'vizMode=' + mode + ';max-age=31536000;path=/;SameSite=Lax';
+}
+
+// Init splash toggle from cookie
+(function initVizPref() {
+  const pref = getVizPref();
+  const pitchBtn = document.getElementById('defaultVizPitch');
+  const spectroBtn = document.getElementById('defaultVizSpectro');
+  if (pref === 'spectro') {
+    pitchBtn.classList.remove('active');
+    spectroBtn.classList.add('active');
+  }
+  pitchBtn.addEventListener('click', () => {
+    setVizPref('pitch');
+    pitchBtn.classList.add('active');
+    spectroBtn.classList.remove('active');
+  });
+  spectroBtn.addEventListener('click', () => {
+    setVizPref('spectro');
+    spectroBtn.classList.add('active');
+    pitchBtn.classList.remove('active');
+  });
+})();
 
 function detectPitch() {
   if (!analyser) return null;
@@ -1761,18 +1798,27 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     if (refGain) refGain.gain.value = e.target.value / 100;
   });
 
-  // Viz mode toggle
+  // Apply saved viz preference
+  vizMode = getVizPref();
+  if (vizMode === 'spectro') {
+    document.getElementById('vizSpectro').classList.add('active');
+    document.getElementById('vizPitch').classList.remove('active');
+  }
+
+  // Viz mode toggle (also saves preference)
   document.getElementById('vizPitch').addEventListener('click', () => {
     vizMode = 'pitch';
+    setVizPref('pitch');
     document.getElementById('vizPitch').classList.add('active');
     document.getElementById('vizSpectro').classList.remove('active');
-    spectroOC = null; // reset waterfall on switch back
+    spectroOC = null;
   });
   document.getElementById('vizSpectro').addEventListener('click', () => {
     vizMode = 'spectro';
+    setVizPref('spectro');
     document.getElementById('vizSpectro').classList.add('active');
     document.getElementById('vizPitch').classList.remove('active');
-    spectroOC = null; // fresh start
+    spectroOC = null;
   });
 
   // Canvas mouse events for cursor note + right-click line pinning
@@ -1959,6 +2005,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.10.1 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.10.2 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
