@@ -1937,13 +1937,11 @@ document.getElementById('startBtn').addEventListener('click', async () => {
   // Viz mode toggle (also saves preference)
   document.getElementById('vizPitch').addEventListener('click', () => {
     vizMode = 'pitch';
-    setVizPref('pitch');
     document.getElementById('vizPitch').classList.add('active');
     document.getElementById('vizSpectro').classList.remove('active');
   });
   document.getElementById('vizSpectro').addEventListener('click', () => {
     vizMode = 'spectro';
-    setVizPref('spectro');
     document.getElementById('vizSpectro').classList.add('active');
     document.getElementById('vizPitch').classList.remove('active');
     spectroOC = null; // force rebuild from unified buffer
