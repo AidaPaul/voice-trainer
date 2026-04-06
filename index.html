@@ -772,10 +772,12 @@ function renderGraph() {
   }
 
   // Pitch line
-  const now = Date.now();
+  const now = graphPaused ? pausedAtTime : Date.now();
   const cutoff = now - HISTORY_SEC * 1000;
-  // Remove old entries
-  while (pitchHistory.length > 0 && pitchHistory[0].time < cutoff) pitchHistory.shift();
+  // Remove old entries (skip when paused to preserve data)
+  if (!graphPaused) {
+    while (pitchHistory.length > 0 && pitchHistory[0].time < cutoff) pitchHistory.shift();
+  }
 
   if (pitchHistory.length > 1) {
     ctx.beginPath();
@@ -1705,6 +1707,7 @@ function classifyZone(freq, zLow, zHigh) {
 let animFrame = null;
 let graphPaused = false;
 let pauseStartTime = 0;
+let pausedAtTime = 0; // frozen Date.now() for pitch graph rendering
 
 function mainLoop() {
   if (graphPaused) {
@@ -1991,6 +1994,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
       document.getElementById('pauseBadge').style.display = graphPaused ? 'inline-block' : 'none';
       if (graphPaused) {
         pauseStartTime = Date.now();
+        pausedAtTime = Date.now();
       } else {
         // Shift all pitch history timestamps forward by pause duration so the graph doesn't jump
         const pauseDuration = Date.now() - pauseStartTime;
@@ -2040,6 +2044,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.10.3 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.10.4 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
