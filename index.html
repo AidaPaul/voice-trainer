@@ -1510,6 +1510,7 @@ function classifyZone(freq, zLow, zHigh) {
 // ─── MAIN LOOP ───────────────────────────────────────────────────────
 let animFrame = null;
 let graphPaused = false;
+let pauseStartTime = 0;
 
 function mainLoop() {
   if (graphPaused) {
@@ -1690,8 +1691,15 @@ document.getElementById('startBtn').addEventListener('click', async () => {
       e.preventDefault();
       graphPaused = !graphPaused;
       document.getElementById('pauseBadge').style.display = graphPaused ? 'inline-block' : 'none';
-      // When unpausing, reset spectro time anchor so it doesn't try to catch up
-      if (!graphPaused) spectroLastColTime = performance.now();
+      if (graphPaused) {
+        pauseStartTime = Date.now();
+      } else {
+        // Shift all pitch history timestamps forward by pause duration so the graph doesn't jump
+        const pauseDuration = Date.now() - pauseStartTime;
+        for (const p of pitchHistory) p.time += pauseDuration;
+        // Reset spectro time anchor so it doesn't try to catch up
+        spectroLastColTime = performance.now();
+      }
     }
   });
 
