@@ -814,6 +814,7 @@ function renderGraph() {
 
   // Custom lines
   drawCustomLines(leftMargin);
+  drawCursorLine(leftMargin);
 
   // Timescale at bottom
   ctx.fillStyle = '#484f58';
@@ -956,7 +957,7 @@ function renderSpectrogram() {
 
   // Time-based advancement: only write columns at the rate needed for 10s window
   const now = performance.now();
-  const pxDue = Math.floor((now - spectroLastColTime) / spectroMsPerPx);
+  const pxDue = graphPaused ? 0 : Math.floor((now - spectroLastColTime) / spectroMsPerPx);
 
   if (pxDue > 0) {
     // Fill column pixels from current FFT data
@@ -1043,6 +1044,7 @@ function renderSpectrogram() {
 
   // Custom lines
   drawCustomLines(leftMargin);
+  drawCursorLine(leftMargin);
 
   // Time labels at bottom
   ctx.fillStyle = '#484f58';
@@ -1061,6 +1063,7 @@ function renderSpectrogram() {
 }
 
 // ─── CUSTOM LINES & CURSOR ──────────────────────────────────────────
+let cursorFreq = null; // frequency under left-click hold, null when released
 const customLines = []; // [{freq, note, label, color}]
 const LINE_COLORS = ['#7ee8fa','#f0883e','#3fb950','#f472b6','#d29922','#a78bfa','#ff6b6b','#38bdf8','#fbbf24','#34d399'];
 let lineColorIdx = 0;
@@ -1164,6 +1167,31 @@ function drawCustomLines(leftMargin) {
     ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w - rightM, y); ctx.stroke();
     ctx.fillText(line.note, leftMargin + 4, y - 4);
   }
+  ctx.restore();
+}
+
+// Draw white cursor line at held frequency
+function drawCursorLine(leftMargin) {
+  if (!cursorFreq) return;
+  const w = canvas.width, h = canvas.height;
+  const labelSize = Math.max(11, Math.min(14, Math.round(h / 18)));
+  const rightM = vizMode === 'spectro' ? labelSize * 4 : 0;
+  let y;
+  if (vizMode === 'spectro') {
+    const plotH = h - 16;
+    const logMinF = Math.log2(SPECTRO_MIN_FREQ);
+    const logMaxF = Math.log2(SPECTRO_MAX_FREQ);
+    y = ((logMaxF - Math.log2(cursorFreq)) / (logMaxF - logMinF)) * plotH;
+    if (y < 0 || y > plotH) return;
+  } else {
+    y = freqToY(cursorFreq);
+    if (y < 0 || y > h) return;
+  }
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w - rightM, y); ctx.stroke();
   ctx.restore();
 }
 
@@ -1680,6 +1708,9 @@ let pauseStartTime = 0;
 
 function mainLoop() {
   if (graphPaused) {
+    // Still render the frozen graph so overlays (cursor line, custom lines) update
+    if (vizMode === 'spectro') renderSpectrogram();
+    else renderGraph();
     animFrame = requestAnimationFrame(mainLoop);
     return;
   }
@@ -1824,29 +1855,33 @@ document.getElementById('startBtn').addEventListener('click', async () => {
   // Canvas mouse events for cursor note + right-click line pinning
   const cursorEl = document.getElementById('cursorNote');
 
-  canvas.addEventListener('mousedown', e => {
-    if (e.button === 0) canvasMouseDown = true;
-  });
-  canvas.addEventListener('mouseup', e => {
-    if (e.button === 0) { canvasMouseDown = false; cursorEl.style.display = 'none'; }
-  });
-  canvas.addEventListener('mouseleave', () => {
-    canvasMouseDown = false;
-    cursorEl.style.display = 'none';
-  });
-
-  canvas.addEventListener('mousemove', e => {
-    if (!canvasMouseDown) return;
+  function updateCursorFromEvent(e) {
     const rect = canvas.getBoundingClientRect();
     const scaleY = canvas.height / rect.height;
     const y = (e.clientY - rect.top) * scaleY;
     const freq = yToFreq(y);
-    if (freq < 20 || freq > 10000) { cursorEl.style.display = 'none'; return; }
+    if (freq < 20 || freq > 10000) { cursorFreq = null; cursorEl.style.display = 'none'; return; }
+    cursorFreq = freq;
     const info = freqToNoteLabel(freq);
     cursorEl.textContent = info.label;
     cursorEl.style.display = 'block';
     cursorEl.style.left = (e.clientX - canvas.parentElement.getBoundingClientRect().left + 12) + 'px';
     cursorEl.style.top = (e.clientY - canvas.parentElement.getBoundingClientRect().top - 10) + 'px';
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.button === 0) { canvasMouseDown = true; updateCursorFromEvent(e); }
+  });
+  canvas.addEventListener('mouseup', e => {
+    if (e.button === 0) { canvasMouseDown = false; cursorFreq = null; cursorEl.style.display = 'none'; }
+  });
+  canvas.addEventListener('mouseleave', () => {
+    canvasMouseDown = false; cursorFreq = null; cursorEl.style.display = 'none';
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    if (!canvasMouseDown) return;
+    updateCursorFromEvent(e);
   });
 
   canvas.addEventListener('contextmenu', e => {
@@ -2005,6 +2040,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.10.2 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.10.3 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
