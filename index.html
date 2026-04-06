@@ -247,7 +247,6 @@ let graphCenterFreq = null; // set per stage to center the graph on target
 const GRAPH_CENTER_OCTAVES = 1.0; // half-range above and below center
 
 // Key notes to label on graph
-const ALL_GRAPH_LABELS = ['A2','B2','C3','C#3','D3','D#3','E3','F3','F#3','G3','G#3','A3','A#3','B3','C4','C#4','D4','D#4','E4','F4','F#4','G4','G#4','A4','A#4','B4'];
 
 function getGraphRange() {
   if (graphCenterFreq) {
@@ -595,20 +594,25 @@ function renderGraph() {
     ctx.setLineDash([]);
   }
 
-  // Note grid lines
+  // Note grid lines — show all notes that fit with enough spacing
   ctx.font = labelSize + 'px monospace';
   ctx.textAlign = 'right';
-  for (const note of ALL_GRAPH_LABELS) {
+  const minLabelGap = labelSize + 4;
+  let lastLabelY = -Infinity;
+  for (const note of ALL_NOTES) {
     const f = NOTE_FREQ_MAP[note];
     const y = freqToY(f);
     if (y < 10 || y > h - 14) continue;
     const isTarget = graphTargets.includes(note);
+    // Always draw target lines; for others, skip if too close to last label
+    if (!isTarget && Math.abs(y - lastLabelY) < minLabelGap) continue;
     ctx.strokeStyle = isTarget ? 'rgba(240,136,62,0.5)' : 'rgba(48,54,61,0.6)';
     ctx.lineWidth = isTarget ? 2 : 0.5;
     ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
     ctx.fillStyle = isTarget ? '#f0883e' : '#484f58';
     ctx.fillText(note, leftMargin - 4, y + 4);
     ctx.lineWidth = 1;
+    lastLabelY = y;
   }
 
   // Pitch line
@@ -1758,6 +1762,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.7.4 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.7.5 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
