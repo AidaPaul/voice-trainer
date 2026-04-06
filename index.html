@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Training</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #1c2129;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text2: #8b949e;
+  --accent: #58a6ff;
+  --target: #f0883e;
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --pitch: #79c0ff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+button { font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--text); padding: 10px 20px; border-radius: 6px; font-size: 15px; transition: all .15s; }
+button:hover { background: var(--border); }
+button:active { transform: scale(0.97); }
+button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+button.primary:hover { opacity: .85; }
+button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+button.sm { padding: 4px 10px; font-size: 12px; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+select { font-family: inherit; background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 6px; font-size: 14px; }
+
+/* Splash */
+#splash { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 24px; padding: 20px; text-align: center; }
+#splash h1 { font-size: 32px; font-weight: 700; }
+#splash p { color: var(--text2); max-width: 460px; line-height: 1.5; }
+#splash .start-btn { font-size: 18px; padding: 14px 36px; }
+#splash .error { color: var(--danger); margin-top: 8px; }
+
+/* Main */
+#main { display: none; padding: 24px 32px; }
+.header { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+.header-left { display: flex; align-items: center; gap: 16px; }
+.session-time { font-variant-numeric: tabular-nums; font-size: 15px; color: var(--text2); }
+.session-time span { color: var(--text); font-weight: 600; }
+.rec-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 4px; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+/* Stage nav */
+.stage-nav { display: flex; gap: 4px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 4px; }
+.stage-pill { padding: 8px 18px; border-radius: 20px; font-size: 14px; border: 1px solid var(--border); background: transparent; white-space: nowrap; color: var(--text2); }
+.stage-pill.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.stage-pill.done { border-color: var(--success); color: var(--success); }
+
+/* Pitch panel */
+.pitch-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; }
+.pitch-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+.note-display { display: flex; align-items: baseline; gap: 8px; }
+.note-name { font-size: 64px; font-weight: 700; font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; min-width: 120px; text-align: center; }
+.note-cents { font-size: 18px; font-family: monospace; min-width: 100px; }
+.note-cents.sharp { color: var(--warning); }
+.note-cents.flat { color: var(--accent); }
+.note-cents.on { color: var(--success); }
+.note-freq { font-size: 13px; color: var(--text2); font-family: monospace; }
+.target-display { text-align: right; }
+.target-label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.target-note { font-size: 32px; font-weight: 600; color: var(--target); font-family: monospace; }
+.vol-control { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.vol-control label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.vol-control input[type=range] { width: 80px; accent-color: var(--target); }
+#pitchCanvas { width: 100%; height: calc(45vh - 40px); min-height: 180px; display: block; border-radius: 6px; }
+.viz-toggle { display: flex; gap: 4px; margin-bottom: 8px; }
+.viz-toggle button { padding: 4px 12px; font-size: 12px; border-radius: 4px; }
+.viz-toggle button.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.custom-lines { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; flex: 1; justify-content: center; min-width: 0; }
+.custom-line-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px 2px 8px; font-size: 12px; font-family: monospace; color: #7ee8fa; }
+.custom-line-chip .cl-del { background: none; border: none; color: var(--text2); cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; }
+.custom-line-chip .cl-del:hover { color: var(--danger); }
+.cursor-note { position: absolute; pointer-events: none; background: rgba(13,17,23,0.85); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font-size: 12px; font-family: monospace; color: #7ee8fa; white-space: nowrap; display: none; z-index: 10; }
+
+/* Stage content */
+.stage-content { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px 28px; margin-bottom: 20px; }
+.stage-title { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+.stage-desc { color: var(--text2); line-height: 1.6; margin-bottom: 18px; font-size: 15px; }
+.stage-timer { font-size: 56px; font-weight: 700; text-align: center; padding: 14px 0; font-variant-numeric: tabular-nums; font-family: monospace; }
+.stage-timer.warning { color: var(--warning); }
+.substep-label { text-align: center; font-size: 14px; color: var(--text2); margin-bottom: 8px; }
+.substep-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; }
+.substep-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+.substep-dot.active { background: var(--accent); }
+.substep-dot.done { background: var(--success); }
+
+/* Controls */
+.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.controls-center { justify-content: center; }
+
+/* Recordings list */
+.recordings { margin-top: 12px; }
+.recordings h4 { font-size: 13px; color: var(--text2); margin-bottom: 6px; }
+.rec-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.rec-item:last-child { border-bottom: none; }
+.rec-item span { font-size: 13px; color: var(--text2); }
+.rec-item audio { height: 32px; flex: 1; }
+
+/* Sentences */
+.current-sentence { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 28px 24px; text-align: center; font-size: 22px; line-height: 1.6; margin: 16px 0; min-height: 80px; display: flex; align-items: center; justify-content: center; }
+.next-sentence { text-align: center; font-size: 15px; color: var(--text2); margin-bottom: 12px; min-height: 1.5em; }
+.sent-progress { display: flex; gap: 6px; justify-content: center; margin-bottom: 14px; }
+.sent-progress .pip { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+.sent-progress .pip.done { background: var(--success); }
+.sent-progress .pip.active { background: var(--accent); }
+.list-selector { margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+
+/* Vowels */
+.vowel-grid { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+.vowel-card { width: 100px; padding: 16px 12px; background: var(--surface2); border: 2px solid var(--border); border-radius: 10px; text-align: center; transition: all .2s; }
+.vowel-card.active { border-color: var(--target); background: rgba(240,136,62,.1); }
+.vowel-card.done { border-color: var(--success); opacity: .6; }
+.vowel-card .vowel { font-size: 24px; font-weight: 700; }
+.vowel-card .word { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+/* Conversation starters */
+.starter-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 24px; text-align: center; font-size: 18px; line-height: 1.5; margin: 16px 0; min-height: 80px; display: flex; align-items: center; justify-content: center; }
+
+/* Footer nav */
+.footer-nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  #main { padding: 12px; }
+  .note-name { font-size: 36px; min-width: 80px; }
+  .target-note { font-size: 22px; }
+  .stage-timer { font-size: 32px; }
+  #pitchCanvas { height: 180px; min-height: 140px; }
+  .vowel-card { width: 80px; padding: 12px 8px; }
+  button { padding: 8px 14px; font-size: 14px; }
+}
+.app-footer { text-align: center; padding: 12px 0 8px; font-size: 11px; color: var(--text2); opacity: 0.6; }
+.app-footer a { color: var(--text2); }
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <h1>Voice Training</h1>
+  <p>Real-time pitch detection, guided exercises, and recording. Follow your instructor's 15-minute practice routine through 7 training stages.</p>
+  <button class="primary start-btn" id="startBtn">Start Practice Session</button>
+  <div id="splashError" class="error" style="display:none"></div>
+</div>
+
+<div id="main">
+  <div class="header">
+    <div class="header-left">
+      <div class="session-time">Session: <span id="sessionTime">00:00</span></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button id="sessionRecBtn" class="sm">Record Session</button>
+      <button id="sessionDownload" class="sm" style="display:none">Download Recording</button>
+    </div>
+  </div>
+
+  <div class="stage-nav" id="stageNav"></div>
+
+  <div class="pitch-panel" id="pitchPanel">
+    <div class="pitch-top">
+      <div class="note-display">
+        <div class="note-name" id="noteName">--</div>
+        <div>
+          <div class="note-cents" id="noteCents">&nbsp;</div>
+          <div class="note-freq" id="noteFreq">&nbsp;</div>
+        </div>
+      </div>
+      <div class="custom-lines" id="customLinesList"></div>
+      <div class="target-display">
+        <div class="target-label">Target</div>
+        <div class="target-note" id="targetNote">--</div>
+        <div class="vol-control">
+          <label>Tone vol</label>
+          <input type="range" id="refVol" min="0" max="100" value="60">
+        </div>
+      </div>
+    </div>
+    <div class="viz-toggle">
+      <button id="vizPitch" class="active">Pitch</button>
+      <button id="vizSpectro">Spectrogram</button>
+    </div>
+    <div style="position:relative;">
+      <canvas id="pitchCanvas"></canvas>
+      <div class="cursor-note" id="cursorNote"></div>
+    </div>
+  </div>
+
+  <div class="stage-content" id="stageContent"></div>
+
+  <div class="footer-nav">
+    <button id="prevBtn">Previous</button>
+    <button id="nextBtn" class="primary">Next Stage</button>
+  </div>
+</div>
+
+<script>
+// ─── NOTE DATA ───────────────────────────────────────────────────────
+const ALL_NOTES = [
+  'C2','C#2','D2','D#2','E2','F2','F#2','G2','G#2','A2','A#2','B2',
+  'C3','C#3','D3','D#3','E3','F3','F#3','G3','G#3','A3','A#3','B3',
+  'C4','C#4','D4','D#4','E4','F4','F#4','G4','G#4','A4','A#4','B4',
+  'C5','C#5','D5','D#5','E5',
+];
+
+function noteFreq(note) {
+  const idx = ALL_NOTES.indexOf(note);
+  if (idx < 0) return 0;
+  // A4 = 440, index of A4 in our array
+  const a4Idx = ALL_NOTES.indexOf('A4');
+  return 440 * Math.pow(2, (idx - a4Idx) / 12);
+}
+
+const NOTE_FREQ_MAP = {};
+ALL_NOTES.forEach(n => NOTE_FREQ_MAP[n] = noteFreq(n));
+
+function freqToNote(freq) {
+  if (!freq || freq < 60 || freq > 1400) return null;
+  const semitones = 12 * Math.log2(freq / 440);
+  const a4Idx = ALL_NOTES.indexOf('A4');
+  const noteIdx = Math.round(semitones) + a4Idx;
+  if (noteIdx < 0 || noteIdx >= ALL_NOTES.length) return null;
+  const note = ALL_NOTES[noteIdx];
+  const cents = Math.round((semitones - Math.round(semitones)) * 100);
+  return { note, cents, freq };
+}
+
+// Graph note range (default, overridden dynamically by target centering)
+const GRAPH_DEFAULT_LOW_FREQ = noteFreq('A2');
+const GRAPH_DEFAULT_HIGH_FREQ = noteFreq('A4');
+let graphCenterFreq = null; // set per stage to center the graph on target
+const GRAPH_CENTER_OCTAVES = 1.0; // half-range above and below center
+
+// Key notes to label on graph
+const ALL_GRAPH_LABELS = ['A2','B2','C3','C#3','D3','D#3','E3','F3','F#3','G3','G#3','A3','A#3','B3','C4','C#4','D4','D#4','E4','F4','F#4','G4','G#4','A4','A#4','B4'];
+
+function getGraphRange() {
+  if (graphCenterFreq) {
+    return {
+      low: graphCenterFreq / Math.pow(2, GRAPH_CENTER_OCTAVES),
+      high: graphCenterFreq * Math.pow(2, GRAPH_CENTER_OCTAVES),
+    };
+  }
+  return { low: GRAPH_DEFAULT_LOW_FREQ, high: GRAPH_DEFAULT_HIGH_FREQ };
+}
+
+// ─── HARVARD SENTENCES ───────────────────────────────────────────────
+const HARVARD = [
+["The birch canoe slid on the smooth planks.","Glue the sheet to the dark blue background.","It's easy to tell the depth of a well.","These days a chicken leg is a rare dish.","Rice is often served in round bowls.","The juice of lemons makes fine punch.","The box was thrown beside the parked truck.","The hogs were fed chopped corn and garbage.","Four hours of steady work faced us.","A large size in stockings is hard to sell."],
+["The boy was there when the sun rose.","A rod is used to catch pink salmon.","The source of the huge river is the clear spring.","Kick the ball straight and follow through.","Help the woman get back to her feet.","A pot of tea helps to pass the evening.","Smoky fires lack flame and heat.","The soft cushion broke the man's fall.","The salt breeze came across from the sea.","The girl at the booth sold fifty bonds."],
+["The small pup gnawed a hole in the sock.","The fish twisted and turned on the bent hook.","Press the pants and sew a button on the vest.","The swan dive was far short of perfect.","The beauty of the view stunned the young boy.","Two blue fish swam in the tank.","Her purse was full of useless trash.","The colt reared and threw the tall rider.","It snowed, rained, and hailed the same morning.","Read verse out loud for pleasure."],
+["Hoist the load to your left shoulder.","Take the winding path to reach the lake.","Note closely the size of the gas tank.","Wipe the grease off his dirty face.","Mend the coat before you go out.","The wrist was badly strained and hung limp.","The stray cat gave birth to kittens.","The young girl gave no clear response.","The meal was cooked before the bell rang.","What joy there is in living."],
+["A king ruled the state in the early days.","The ship was torn apart on the sharp reef.","Sickness kept him home the third week.","The wide road shimmered in the hot sun.","The lazy cow lay in the cool grass.","Lift the square stone over the fence.","The rope will bind the seven books at once.","Hop over the fence and plunge in.","The friendly gang left the drug store.","Mesh wire keeps chicks inside."],
+["The frosty air passed through the coat.","The crooked maze failed to fool the mouse.","Adding fast leads to wrong sums.","The show was a flop from the very start.","A saw is a tool used for making boards.","The wagon moved on well oiled wheels.","March the soldiers past the next hill.","A cup of sugar makes sweet fudge.","Place a rosebush near the porch steps.","Both lost their lives in the raging storm."],
+["We talked of the side show in the circus.","Use a pencil to write the first draft.","He ran half way to the hardware store.","The clock struck to mark the third period.","A small creek cut across the field.","Cars and busses stalled in snow drifts.","The set of china hit the floor with a crash.","This is a grand season for hikes on the road.","The dune rose from the edge of the water.","Those words were the cue for the actor to leave."],
+["A yacht slid around the point into the bay.","The two met while playing on the sand.","The ink stain dried on the finished page.","The walled town was seized without a fight.","The lease ran out in sixteen weeks.","A tame squirrel makes a nice pet.","The horn of the car woke the sleeping cop.","The heart beat strongly and with firm strokes.","The pearl was worn in a thin silver ring.","The fruit peel was cut in thick slices."],
+["The Navy attacked the big task force.","See the cat glaring at the scared mouse.","There are more than two factors here.","The hat brim was wide and too droopy.","The lawyer tried to lose his case.","The grass curled around the fence post.","Cut the pie into large parts.","Men strive but seldom get rich.","Always close the barn door tight.","He lay prone and hardly moved a limb."],
+["The slush lay deep along the street.","A wisp of cloud hung in the blue air.","A pound of sugar costs more than eggs.","The fin was sharp and cut the clear water.","The play seems dull and quite stupid.","Bail the boat to stop it from sinking.","The term ended in late June that year.","A tusk is used to make costly gifts.","Ten pins were set in order.","The bill was paid every third week."],
+["Oak is strong and also gives shade.","Cats and dogs each hate the other.","The pipe began to rust while new.","Open the crate but don't break the glass.","Add the sum to the product of these three.","Thieves who rob friends deserve jail.","The ripe taste of cheese improves with age.","Act on these orders with great speed.","The hog crawled under the high fence.","Move the vat over the hot fire."],
+["The bark of the pine tree was shiny and dark.","Leaves turn brown and yellow in the fall.","The pennant waved when the wind blew.","Split the log with a quick, sharp blow.","Burn peat after the logs give out.","He ordered peach pie with ice cream.","Weave the carpet on the right hand side.","Hemp is a weed found in parts of the tropics.","A lame back kept his score low.","We find joy in the simplest things."],
+["Type out three lists of orders.","The harder he tried the less he got done.","The boss ran the show with a watchful eye.","The cup cracked and spilled its contents.","Paste can cleanse the most dirty brass.","The slang word for raw whiskey is booze.","It caught its hind paw in a rusty trap.","The wharf could be seen at the farther shore.","Feel the heat of the weak dying flame.","The tiny girl took off her hat."],
+["A cramp is no small danger on a swim.","He said the same phrase thirty times.","Pluck the bright rose without leaves.","Two plus seven is less than ten.","The glow deepened in the eyes of the sweet girl.","Bring your problems to the wise chief.","Write a fond note to the friend you cherish.","Clothes and lodging are free to new men.","We frown when events take a bad turn.","Port is a strong wine with a smoky taste."],
+["The young kid jumped the rusty gate.","Guess the results from the first scores.","A salt pickle tastes fine with ham.","The just claim got the right verdict.","These thistles bend in a high wind.","Pure bred poodles have curls.","The tree top waved in a graceful way.","The spot on the blotter was made by green ink.","Mud was spattered on the front of his white shirt.","The cigar burned a hole in the desk top."],
+["The empty flask stood on the tin tray.","A speedy man can beat this track mark.","He broke a new shoelace that day.","The coffee stand is too high for the couch.","The urge to write short stories is rare.","The pencils have all been used.","The pirates seized the crew of the lost ship.","We tried to replace the coin but failed.","She sewed the torn coat quite neatly.","The sofa cushion is red and of light weight."],
+["The jacket hung on the back of the wide chair.","At that high level the air is pure.","Drop the two when you add the figures.","A filing case is now hard to buy.","An abrupt start does not win the prize.","Wood is best for making toys and blocks.","The office paint was a dull, sad tan.","He knew the skill of the great young actress.","A rag will soak up spilled water.","A shower of dirt fell from the hot pipes."],
+["Steam hissed from the broken valve.","The child almost hurt the small dog.","There was a sound of dry leaves outside.","The sky that morning was clear and bright blue.","Torn scraps littered the stone floor.","Sunday is the best part of the week.","The doctor cured him with these pills.","The new girl was fired today at noon.","They felt gay when the ship arrived in port.","Add the store's account to the last cent."],
+["Acid burns holes in wool cloth.","Fairy tales should be fun to write.","Eight miles of woodland burned to waste.","The third act was dull and tired the players.","A young child should not suffer fright.","Add the column and put the sum here.","We admire and love a good cook.","There the flood mark is ten inches.","He carved a head from the round block of marble.","She has a smart way of wearing clothes."],
+["The fruit of a fig tree is apple-shaped.","Corn cobs can be used to kindle a fire.","Where were they when the noise started.","The paper box is full of thumb tacks.","Sell your gift to a buyer at a good gain.","The tongs lay beside the ice pail.","The petals fall with the next puff of wind.","Bring your best compass to the third class.","They could laugh although they were sad.","Farmers came in to thresh the oat crop."],
+["The brown house was on fire to the attic.","The lure is used to catch trout and flounder.","Float the soap on top of the bath water.","A blue crane is a tall wading bird.","A fresh start will work such wonders.","The club rented the rink for the fifth night.","After the dance, they went straight home.","The hostess taught the new maid to serve.","He wrote his last novel there at the inn.","Even the worst will beat his low score."],
+["The cement had dried when he moved it.","The loss of the second ship was hard to take.","The fly made its way along the wall.","Do that with a wooden stick.","Live wires should be kept covered.","The large house had hot water taps.","It is hard to erase blue or red ink.","Write at once or you may forget it.","The doorknob was made of bright clean brass.","The wreck occurred by the bank on Main Street."],
+["A pencil with black lead writes best.","Coax a young calf to drink from a bucket.","Schools for ladies teach charm and grace.","The lamp shone with a steady green flame.","They took the axe and the saw to the forest.","The ancient coin was quite dull and worn.","The shaky barn fell with a loud crash.","Jazz and swing fans like fast music.","Rake the rubbish up and then burn it.","Slash the gold cloth into fine ribbons."],
+["Try to have the court decide the case.","They are pushed back each time they attack.","He broke his ties with groups of former friends.","They floated on the raft to sun their white backs.","The map had an X that meant nothing.","Whitings are small fish caught in nets.","Some ads serve to cheat buyers.","Jerk the rope and the bell rings weakly.","A waxed floor makes us lose balance.","Madam, this is the best brand of corn."],
+["On the islands the sea breeze is soft and mild.","The play began as soon as we sat down.","This will lead the world to more sound and fury.","Add salt before you fry the egg.","The rush for funds reached its peak Tuesday.","The birch looked stark white and lonesome.","The box is held by a bright red snapper.","To make pure ice, you freeze water.","The first worm gets snapped early.","Jump the fence and hurry up the bank."],
+["Yell and clap as the curtain slides back.","They are men who walk the middle of the road.","Both brothers wear the same size.","In some form or other we need fun.","The prince ordered his head chopped off.","The houses are built of red clay bricks.","Ducks fly north but lack a compass.","Fruit flavors are used in fizz drinks.","These pills do less good than others.","Canned pears lack full flavor."],
+["The dark pot hung in the front closet.","Carry the pail to the wall and spill it there.","The train brought our hero to the big town.","We are sure that one war is enough.","Gray paint stretched for miles around.","The rude laugh filled the empty room.","High seats are best for football fans.","Tea served from the brown jug is tasty.","A dash of pepper spoils beef stew.","A zestful food is the hot-cross bun."],
+["The horse trotted around the field at a brisk pace.","Find the twin who stole the pearl necklace.","Cut the cord that binds the box tightly.","The red tape bound the smuggled food.","Look in the corner to find the tan shirt.","The cold drizzle will halt the bond drive.","Nine men were hired to dig the ruins.","The junk yard had a mouldy smell.","The flint sputtered and lit a pine torch.","Soak the cloth and drown the sharp odor."],
+["The shelves were bare of both jam or crackers.","A joy to every child is the swan boat.","All sat frozen and watched the screen.","A cloud of dust stung his tender eyes.","To reach the end he needs much courage.","Shape the clay gently into block form.","A ridge on a smooth surface is a bump or flaw.","Hedge apples may stain your hands green.","Quench your thirst, then eat the crackers.","Tight curls get limp on rainy days."],
+["The mute muffled the high tones of the horn.","The gold ring fits only a pierced ear.","The old pan was covered with hard fudge.","Watch the log float in the wide river.","The node on the stalk of wheat grew daily.","The heap of fallen leaves was set on fire.","Write fast if you want to finish early.","His shirt was clean but one button was gone.","The barrel of beer was a brew of malt and hops.","Tin cans are absent from store shelves."],
+["Slide the box into that empty space.","The plant grew large and green in the window.","The beam dropped down on the workmen's head.","Pink clouds floated with the breeze.","She danced like a swan, tall and graceful.","The tube was blown and the tire flat and useless.","It is late morning on the old wall clock.","Let's all join as we sing the last chorus.","The last switch cannot be turned off.","The fight will end in just six minutes."],
+["The store walls were lined with colored frocks.","The peace league met to discuss their plans.","The rise to fame of a person takes luck.","Paper is scarce, so write with much care.","The quick fox jumped on the sleeping cat.","The nozzle of the fire hose was bright brass.","Screw the round cap on as tight as needed.","Time brings us many changes.","The purple tie was ten years old.","Men think and plan and sometimes act."],
+["Fill the ink jar with sticky glue.","He smoke a big pipe with strong contents.","We need grain to keep our mules healthy.","Pack the records in a neat thin case.","The crunch of feet in the snow was the only sound.","The copper bowl shone in the sun's rays.","Boards will warp unless kept dry.","The plush chair leaned against the wall.","Glass will clink when struck by metal.","Bathe and relax in the cool green grass."],
+["Nine rows of soldiers stood in line.","The beach is dry and shallow at low tide.","The idea is to sew both edges straight.","The kitten chased the dog down the street.","Pages bound in cloth make a book.","Try to trace the fine lines of the painting.","Women form less than half of the group.","The zones merge in the central part of town.","A gem in the rough needs work to polish.","Code is used when secrets are sent."],
+["Most of the news is easy for us to hear.","He used the lathe to make brass objects.","The vane on top of the pole revolved in the wind.","Mince pie is a dish served to children.","The clan gathered on each dull night.","Let it burn, it gives us warmth and comfort.","A castle built from sand fails to endure.","A child's wit saved the day for us.","Tack the strip of carpet to the worn floor.","Next Tuesday we must vote."],
+["Pour the stew from the pot into the plate.","Each penny shone like new.","The man went to the woods to gather sticks.","The dirt piles were lines along the road.","The logs fell and tumbled into the clear stream.","Just hoist it up and take it away.","A ripe plum is fit for a king's palate.","Our plans right now are hazy.","Brass rings are sold by these natives.","It takes a good trap to capture a bear."],
+["Feed the white mouse some flower seeds.","The thaw came early and freed the stream.","He took the lead and kept it the whole distance.","The key you designed will fit the lock.","Plead to the council to free the poor thief.","Better hash is made of rare beef.","This plank was made for walking on.","The lake sparkled in the red hot sun.","He crawled with care along the ledge.","Tend the sheep while the dog wanders."],
+["It takes a lot of help to finish these.","Mark the spot with a sign painted red.","Take two shares as a fair profit.","The fur of cats goes by many names.","North winds bring colds and fevers.","He asks no person to vouch for him.","Go now and come here later.","A sash of gold silk will trim her dress.","Soap can wash most dirt away.","That move means the game is over."],
+["He wrote down a long list of items.","A siege will crack the strong defense.","Grape juice and water mix well.","Roads are paved with sticky tar.","Fake stones shine but cost little.","The drip of the rain made a pleasant sound.","Smoke poured out of every crack.","Serve the hot rum to the tired heroes.","Much of the story makes good sense.","The sun came up to light the eastern sky."],
+["Heave the line over the port side.","A lathe cuts and trims any wood.","It's a dense crowd in two distinct ways.","His hip struck the knee of the next player.","The stale smell of old beer lingers.","The desk was firm on the shaky floor.","It takes heat to bring out the odor.","Beef is scarcer than some lamb.","Raise the sail and steer the ship northward.","A cone costs five cents on Mondays."],
+["A pod is what peas always grow in.","Jerk the dart from the cork target.","No cement will hold hard wood.","We now have a new base for shipping.","A list of names is carved around the base.","The sheep were led home by a dog.","Three for a dime, the young peddler cried.","The sense of smell is better than that of touch.","No hardship seemed to keep him sad.","Grace makes up for lack of beauty."],
+["Nudge gently but wake her now.","The news struck doubt into restless minds.","Once we stood beside the shore.","A chink in the wall allowed a draft to blow.","Fasten two pins on each side.","A cold dip restores health and zest.","He takes the oath of office each March.","The sand drifts over the sill of the old house.","The point of the steel pen was bent and twisted.","There is a lag between thought and act."],
+["Seed is needed to plant the spring corn.","Draw the chart with heavy black lines.","The boy owed his pal thirty cents.","The chap slipped into the crowd and was lost.","Hats are worn to tea and not to dinner.","The ramp led up to the wide highway.","Beat the dust from the rug onto the lawn.","Say it slowly but make it ring clear.","The straw nest housed five robins.","Screen the porch with woven straw mats."],
+["This horse will nose his way to the finish.","The dry wax protects the deep scratch.","He picked up the dice for a second roll.","These coins will be needed to pay his debt.","The nag pulled the frail cart along.","Twist the valve and release hot steam.","The vamp of the shoe had a gold buckle.","The smell of burned rags itches my nose.","New pants lack cuffs and pockets.","The marsh will freeze when cold enough."],
+["They slice the sausage thin with a knife.","The bloom of the rose lasts a few days.","A gray mare walked before the colt.","Breakfast buns are fine with a hot drink.","Bottles hold four kinds of rum.","The man wore a feather in his felt hat.","He wheeled the bike past the winding road.","Drop the ashes on the worn old rug.","The desk and both chairs were painted tan.","Throw out the used paper cup and plate."],
+["A clean neck means a neat collar.","The couch cover and hall drapes were blue.","The stems of the tall glasses cracked and broke.","The wall phone rang loud and often.","The clothes dried on a thin wooden rack.","Turn on the lantern which gives us light.","The cleat sank deeply into the soft turf.","The bills were mailed promptly on the tenth of the month.","To have is better than to wait and hope.","The price is fair for a good antique clock."],
+["The music played on while they talked.","Dispense with a vest on a day like this.","The bunch of grapes was pressed into wine.","He sent the figs, but kept the ripe cherries.","The hinge on the door creaked with old age.","The screen before the fire kept in the sparks.","Fly by night, and you waste little time.","Thick glasses helped him read the print.","Birth and death mark the limits of life.","The chair looked strong but had no bottom."],
+["The kite flew wildly in the high wind.","A fur muff is stylish once more.","The tin box held priceless stones.","We need an end of all such matter.","The case was puzzling to the old and wise.","The bright lanterns were gay on the dark lawn.","We don't get much money but we have fun.","The youth drove with zest, but little skill.","Five years he lived with a shaggy dog.","A fence cuts through the corner lot."],
+["The way to save money is not to spend much.","Shut the hatch before the waves push it in.","The odor of spring makes young hearts jump.","Crack the walnut with your sharp side teeth.","He offered proof in the form of a large chart.","Send the stuff in a thick paper bag.","A quart of milk is water for the most part.","They told wild tales to frighten him.","The three story house was built of stone.","In the rear of the ground floor was a large passage."],
+["A man in a blue sweater sat at the desk.","Oats are a food eaten by horse and man.","Their eyelids droop for want of sleep.","A sip of tea revives his tired friend.","There are many ways to do these things.","Tuck the sheet under the edge of the mat.","A force equal to that would move the earth.","We like to see clear weather.","The work of the tailor is seen on each side.","Take a chance and win a china doll."],
+["Shake the dust from your shoes, stranger.","She was kind to sick old people.","The square wooden crate was packed to be shipped.","The dusty bench stood by the stone wall.","We dress to suit the weather of most days.","Smile when you say nasty words.","A bowl of rice is free with chicken stew.","The water in this well is a source of good health.","Take shelter in this tent, but keep still.","That guy is the writer of a few banned books."],
+["The little tales they tell are false.","The door was barred, locked, and bolted as well.","Ripe pears are fit for a queen's table.","A big wet stain was on the round carpet.","The kite dipped and swayed, but stayed aloft.","The pleasant hours fly by much too soon.","The room was crowded with a wild mob.","This strong arm shall shield your honor.","She blushed when he gave her a white orchid.","The beetle droned in the hot June sun."],
+["Press the pedal with your left foot.","Neat plans fail without luck.","The black trunk fell from the landing.","The bank pressed for payment of the debt.","The theft of the pearl pin was kept secret.","Shake hands with this friendly child.","The vast space stretched into the far distance.","A rich farm is rare in this sandy waste.","His wide grin earned many friends.","Flax makes a fine brand of paper."],
+["Hurdle the pit with the aid of a long pole.","A strong bid may scare your partner stiff.","Even a just cause needs power to win.","Peep under the tent and see the clowns.","The leaf drifts along with a slow spin.","Cheap clothes are flashy but don't last.","A thing of small note can cause despair.","Flood the mails with requests for this book.","A thick coat of black paint covered all.","The pencil was cut to be sharp at both ends."],
+["Those last words were a strong statement.","He wrote his name boldly at the top of the sheet.","Dill pickles are sour but taste fine.","Down that road is the way to the grain farmer.","Either mud or dust are found at all times.","The best method is to fix it in place with clips.","If you mumble your speech will be lost.","At night the alarm roused him from a deep sleep.","Read just what the meter says.","Fill your pack with bright trinkets for the poor."],
+["The small red neon lamp went out.","Clams are small, round, soft, and tasty.","The fan whirled its round blades softly.","The line where the edges join was clean.","Breathe deep and smell the piny air.","It matters not if he reads these words or those.","A brown leather bag hung from its strap.","A toad and a frog are hard to tell apart.","A white silk jacket goes with any shoes.","A break in the dam almost caused a flood."],
+["Paint the sockets in the wall dull green.","The child crawled into the dense grass.","Bribes fail where honest men work.","Trample the spark, else the flames will spread.","The hilt of the sword was carved with fine designs.","A round hole was drilled through the thin board.","Footprints showed the path he took up the beach.","She was waiting at my front lawn.","A vent near the edge brought in fresh air.","Prod the old mule with a crooked stick."],
+["It is a band of steel three inches wide.","The pipe ran almost the length of the ditch.","It was hidden from sight by a mass of leaves and shrubs.","The weight of the package was seen on the high scale.","Wake and rise, and step into the green outdoors.","The green light in the brown box flickered.","The brass tube circled the high wall.","The lobes of her ears were pierced to hold rings.","Hold the hammer near the end to drive the nail.","Next Sunday is the twelfth of the month."],
+["Every word and phrase he speaks is true.","He put his last cartridge into the gun and fired.","They took their kids from the public school.","Drive the screw straight into the wood.","Keep the hatch tight and the watch constant.","Sever the twine with a quick snip of the knife.","Paper will dry out when wet.","Slide the catch back and open the desk.","Help the weak to preserve their strength.","A sullen smile gets few friends."],
+["Stop whistling and watch the boys march.","Jerk the cord, and out tumbles the gold.","Slide the tray across the glass top.","The cloud moved in a stately way and was gone.","Light maple makes for a swell room.","Set the piece here and say nothing.","Dull stories make her laugh.","A stiff cord will do to fasten your shoe.","Get the trust fund to the bank early.","Choose between the high road and the low."],
+["A plea for funds seems to come again.","He lent his coat to the tall gaunt stranger.","There is a strong chance it will happen once more.","The duke left the park in a silver coach.","Greet the new guests and leave quickly.","When the frost has come it is time for turkey.","Sweet words work better than fierce.","A thin stripe runs down the middle.","A six comes up more often than a ten.","Lush fern grow on the lofty rocks."],
+["The ram scared the school children off.","The team with the best timing looks good.","The farmer swapped his horse for a brown ox.","Sit on the perch and tell the others what to do.","A steep trail is painful for our feet.","The early phase of life moves fast.","Green moss grows on the northern side.","Tea in thin china has a sweet taste.","Pitch the straw through the door of the stable.","The latch on the back gate needed a nail."],
+["The goose was brought straight from the old market.","The sink is the thing in which we pile dishes.","A whiff of it will cure the most stubborn cold.","The facts don't always show who is right.","She flaps her cape as she parades the street.","The loss of the cruiser was a blow to the fleet.","Loop the braid to the left and then over.","Plead with the lawyer to drop the lost cause.","Calves thrive on tender spring grass.","Post no bills on this office wall."],
+["Tear a thin sheet from the yellow pad.","A cruise in warm waters in a sleek yacht is fun.","A streak of color ran down the left edge.","It was done before the boy could see it.","Crouch before you jump or miss the mark.","Pack the kits and don't forget the salt.","The square peg will settle in the round hole.","Fine soap saves tender skin.","Poached eggs and tea must suffice.","Bad nerves are jangled by a door slam."],
+["Ship maps are different from those for planes.","Dimes showered down from all sides.","They sang the same tunes at each party.","The sky in the west is tinged with orange red.","The pods of peas ferment in bare fields.","The horse balked and threw the tall rider.","The hitch between the horse and cart broke.","Pile the coal high in the shed corner.","A gold vase is both rare and costly.","The knife was hung inside its bright sheath."],
+["The rarest spice comes from the far East.","The roof should be tilted at a sharp slant.","A smatter of French is worse than none.","The mule trod the treadmill day and night.","The aim of the contest is to raise a great fund.","To send it now in large amounts is bad.","There is a fine hard tang in salty air.","Cod is the main business of the north shore.","The slab was hewn from heavy blocks of slate.","Dunk the stale biscuits into strong drink."],
+["Hang tinsel from both branches.","Cap the jar with a tight brass cover.","The poor boy missed the boat again.","Be sure to set the lamp firmly in the hole.","Pick a card and slip it under the pack.","A round mat will cover the dull spot.","The first part of the plan needs changing.","A good book informs of what we ought to know.","The mail comes in three batches per day.","You cannot brew tea in a cold pot."],
+["Dots of light betrayed the black cat.","Put the chart on the mantel and tack it down.","The night shift men rate extra pay.","The red paper brightened the dim stage.","See the player scoot to third base.","Slide the bill between the two leaves.","Many hands help get the job done.","We don't like to admit our small faults.","No doubt about the way the wind blows.","Dig deep in the earth for pirate's gold."],
+["The steady drip is worse than a drenching rain.","A flat pack takes less luggage space.","Green ice frosted the punch bowl.","A stuffed chair slipped from the moving van.","The stitch will serve but needs to be shortened.","A thin book fits in the side pocket.","The gloss on top made it unfit to read.","The hail pattered on the burnt brown grass.","Seven seals were stamped on great sheets.","Our troops are set to strike heavy blows."],
+["The store was jammed before the sale could start.","It was a bad error on the part of the new judge.","One step more and the board will collapse.","Take the match and strike it against your shoe.","The pot boiled, but the contents failed to jell.","The baby puts his right foot in his mouth.","The bombs left most of the town in ruins.","Stop and stare at the hard working man.","The streets are narrow and full of sharp turns.","The pup jerked the leash as he saw a feline shape."],
+["Open your book to the first page.","Fish evade the net and swim off.","Dip the pail once and let it settle.","Will you please answer that phone.","The big red apple fell to the ground.","The curtain rose and the show was on.","The young prince became heir to the throne.","He sent the boy on a short errand.","Leave now and you will arrive on time.","The corner store was robbed last night."],
+["A gold ring will please most any girl.","The long journey home took a year.","She saw a cat in the neighbor's house.","A pink shell was found on the sandy beach.","Small children came to see him.","The grass and bushes were wet with dew.","The blind man counted his old coins.","A severe storm tore down the barn.","She called his name many times.","When you hear the bell, come quickly."],
+];
+
+// ─── CONVERSATION STARTERS ──────────────────────────────────────────
+const STARTERS = [
+  "What did you do last weekend?",
+  "Tell me about your favorite hobby.",
+  "What's the best meal you've ever had?",
+  "Describe your morning routine.",
+  "If you could live anywhere in the world, where would it be?",
+  "What's your favorite season and why?",
+  "Tell me about a movie or show you've watched recently.",
+  "What would you do with a completely free day?",
+  "Describe your favorite place to relax.",
+  "What's something you're really looking forward to?",
+  "Tell me about your best friend.",
+  "What's the most interesting thing you've learned recently?",
+  "If you could have any superpower, what would it be?",
+  "Describe your perfect vacation.",
+  "What's your favorite childhood memory?",
+  "Tell me about a skill you'd like to learn.",
+  "What do you enjoy most about your current work or studies?",
+  "Describe your ideal home.",
+  "What's the last book you read and what did you think?",
+  "If you could meet anyone, living or dead, who would it be?",
+  "What three things would you bring to a desert island?",
+  "Tell me about a challenge you overcame.",
+  "What makes you laugh the most?",
+  "Describe a typical day for you.",
+  "What's a goal you're working toward right now?",
+  "If you could learn any language instantly, which would it be?",
+  "What's the best advice you've ever received?",
+  "Tell me about your favorite animal.",
+  "What do you think the world will be like in 50 years?",
+  "Describe your favorite way to spend a rainy day.",
+];
+
+// ─── AUDIO ENGINE ────────────────────────────────────────────────────
+let audioCtx = null;
+let analyser = null;
+let mediaStream = null;
+let pitchBuf = null;
+let sessionMediaRec = null;
+let sessionChunks = [];
+let exerciseMediaRec = null;
+let exerciseChunks = [];
+let isSessionRecording = false;
+
+async function initAudio() {
+  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 4096;
+  const src = audioCtx.createMediaStreamSource(mediaStream);
+  src.connect(analyser);
+  pitchBuf = new Float32Array(analyser.fftSize);
+}
+
+function detectPitch() {
+  if (!analyser) return null;
+  analyser.getFloatTimeDomainData(pitchBuf);
+  const buf = pitchBuf;
+  const len = buf.length;
+  const sr = audioCtx.sampleRate;
+
+  // RMS check
+  let rms = 0;
+  for (let i = 0; i < len; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / len);
+  if (rms < 0.01) return null;
+
+  // Autocorrelation
+  let r1 = 0, r2 = len - 1;
+  const thr = 0.2;
+  for (let i = 0; i < len / 2; i++) { if (Math.abs(buf[i]) < thr) { r1 = i; break; } }
+  for (let i = 1; i < len / 2; i++) { if (Math.abs(buf[len - i]) < thr) { r2 = len - i; break; } }
+
+  const trimmed = buf.slice(r1, r2);
+  const tLen = trimmed.length;
+  if (tLen < 2) return null;
+
+  const c = new Float32Array(tLen);
+  for (let i = 0; i < tLen; i++) {
+    for (let j = 0; j < tLen - i; j++) {
+      c[i] += trimmed[j] * trimmed[j + i];
+    }
+  }
+
+  // Find dip then peak
+  let d = 0;
+  while (d < tLen - 1 && c[d] > c[d + 1]) d++;
+  let maxVal = -1, maxPos = -1;
+  for (let i = d; i < tLen; i++) {
+    if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
+  }
+  if (maxPos < 1 || maxVal < 0.01 * c[0]) return null;
+
+  // Parabolic interpolation
+  let T0 = maxPos;
+  if (T0 > 0 && T0 < tLen - 1) {
+    const y1 = c[T0 - 1], y2 = c[T0], y3 = c[T0 + 1];
+    const a = (y1 + y3 - 2 * y2) / 2;
+    const b = (y3 - y1) / 2;
+    if (a !== 0) T0 = T0 - b / (2 * a);
+  }
+
+  const freq = sr / T0;
+  if (freq < 60 || freq > 1000) return null;
+  return freq;
+}
+
+// Smoothing
+const pitchSmooth = [];
+function smoothedPitch(freq) {
+  if (!freq) { pitchSmooth.length = 0; return null; }
+  pitchSmooth.push(freq);
+  if (pitchSmooth.length > 5) pitchSmooth.shift();
+  const sorted = [...pitchSmooth].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+// Reference tone
+let refOsc = null;
+let refGain = null;
+let refVolume = 0.6;
+
+function getRefVolume() {
+  const slider = document.getElementById('refVol');
+  return slider ? slider.value / 100 : refVolume;
+}
+
+function startReference(noteName) {
+  if (!audioCtx) return;
+  stopReference();
+  const f = NOTE_FREQ_MAP[noteName];
+  if (!f) return;
+  refOsc = audioCtx.createOscillator();
+  refGain = audioCtx.createGain();
+  refOsc.type = 'triangle';
+  refOsc.frequency.value = f;
+  refGain.gain.value = getRefVolume();
+  refOsc.connect(refGain);
+  refGain.connect(audioCtx.destination);
+  refOsc.start();
+}
+function stopReference() {
+  if (refOsc) {
+    if (refGain) {
+      refGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      refGain.gain.setValueAtTime(refGain.gain.value, audioCtx.currentTime);
+      refGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+    }
+    const osc = refOsc;
+    setTimeout(() => { try { osc.stop(); } catch(e){} }, 60);
+    refOsc = null; refGain = null;
+  }
+}
+function bindHoldRef(btnId, noteName) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const start = () => { startReference(noteName); btn.classList.add('danger'); btn.textContent = 'Release to Stop'; };
+  const stop = () => { stopReference(); btn.classList.remove('danger'); btn.textContent = btn.dataset.label; };
+  btn.dataset.label = btn.textContent;
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', stop);
+  btn.addEventListener('mouseleave', stop);
+  btn.addEventListener('touchstart', e => { e.preventDefault(); start(); });
+  btn.addEventListener('touchend', stop);
+  btn.addEventListener('touchcancel', stop);
+}
+
+// Recording
+function startExerciseRec() {
+  if (!mediaStream) return;
+  exerciseChunks = [];
+  exerciseMediaRec = new MediaRecorder(mediaStream);
+  exerciseMediaRec.ondataavailable = e => { if (e.data.size > 0) exerciseChunks.push(e.data); };
+  exerciseMediaRec.start();
+}
+function stopExerciseRec() {
+  return new Promise(resolve => {
+    if (!exerciseMediaRec || exerciseMediaRec.state === 'inactive') { resolve(null); return; }
+    exerciseMediaRec.onstop = () => {
+      const blob = new Blob(exerciseChunks, { type: 'audio/webm' });
+      resolve(URL.createObjectURL(blob));
+    };
+    exerciseMediaRec.stop();
+  });
+}
+
+function startSessionRec() {
+  if (!mediaStream) return;
+  sessionChunks = [];
+  sessionMediaRec = new MediaRecorder(mediaStream);
+  sessionMediaRec.ondataavailable = e => { if (e.data.size > 0) sessionChunks.push(e.data); };
+  sessionMediaRec.start();
+  isSessionRecording = true;
+}
+function stopSessionRec() {
+  return new Promise(resolve => {
+    if (!sessionMediaRec || sessionMediaRec.state === 'inactive') { resolve(null); return; }
+    sessionMediaRec.onstop = () => {
+      isSessionRecording = false;
+      const blob = new Blob(sessionChunks, { type: 'audio/webm' });
+      resolve(URL.createObjectURL(blob));
+    };
+    sessionMediaRec.stop();
+  });
+}
+
+// ─── PITCH GRAPH ─────────────────────────────────────────────────────
+const pitchHistory = []; // {time, freq}
+const HISTORY_SEC = 10;
+let graphTargets = []; // note names
+let graphZone = null; // {low, high} note names
+let canvas, ctx;
+
+function initGraph() {
+  canvas = document.getElementById('pitchCanvas');
+  ctx = canvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+}
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width - 32;
+  canvas.height = parseInt(getComputedStyle(canvas).height) || 220;
+}
+
+function freqToY(freq) {
+  if (!freq) return -1;
+  const range = getGraphRange();
+  const logLow = Math.log2(range.low);
+  const logHigh = Math.log2(range.high);
+  const logF = Math.log2(freq);
+  const ratio = (logF - logLow) / (logHigh - logLow);
+  return canvas.height - ratio * canvas.height;
+}
+
+function renderGraph() {
+  if (!ctx) return;
+  const w = canvas.width, h = canvas.height;
+  const labelSize = Math.max(11, Math.min(14, Math.round(h / 18)));
+  const leftMargin = labelSize * 4;
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, w, h);
+
+  // Target zone
+  if (graphZone) {
+    const yLow = freqToY(NOTE_FREQ_MAP[graphZone.low]);
+    const yHigh = freqToY(NOTE_FREQ_MAP[graphZone.high]);
+    ctx.fillStyle = 'rgba(240,136,62,0.07)';
+    ctx.fillRect(0, yHigh, w, yLow - yHigh);
+    ctx.strokeStyle = 'rgba(240,136,62,0.3)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(0, yLow); ctx.lineTo(w, yLow); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, yHigh); ctx.lineTo(w, yHigh); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Note grid lines
+  ctx.font = labelSize + 'px monospace';
+  ctx.textAlign = 'right';
+  for (const note of ALL_GRAPH_LABELS) {
+    const f = NOTE_FREQ_MAP[note];
+    const y = freqToY(f);
+    if (y < 10 || y > h - 14) continue;
+    const isTarget = graphTargets.includes(note);
+    ctx.strokeStyle = isTarget ? 'rgba(240,136,62,0.5)' : 'rgba(48,54,61,0.6)';
+    ctx.lineWidth = isTarget ? 2 : 0.5;
+    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
+    ctx.fillStyle = isTarget ? '#f0883e' : '#484f58';
+    ctx.fillText(note, leftMargin - 4, y + 4);
+    ctx.lineWidth = 1;
+  }
+
+  // Pitch line
+  const now = Date.now();
+  const cutoff = now - HISTORY_SEC * 1000;
+  // Remove old entries
+  while (pitchHistory.length > 0 && pitchHistory[0].time < cutoff) pitchHistory.shift();
+
+  if (pitchHistory.length > 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = '#79c0ff';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    let started = false;
+    for (let i = 0; i < pitchHistory.length; i++) {
+      const p = pitchHistory[i];
+      const x = leftMargin + ((p.time - cutoff) / (HISTORY_SEC * 1000)) * (w - leftMargin);
+      const y = freqToY(p.freq);
+      if (y < 0 || y > h) { started = false; continue; }
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Current dot
+    const last = pitchHistory[pitchHistory.length - 1];
+    if (now - last.time < 200) {
+      const lx = leftMargin + ((last.time - cutoff) / (HISTORY_SEC * 1000)) * (w - leftMargin);
+      const ly = freqToY(last.freq);
+      if (ly >= 0 && ly <= h) {
+        ctx.beginPath();
+        ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#79c0ff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(lx, ly, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(121,192,255,0.4)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Custom lines
+  drawCustomLines(leftMargin);
+
+  // Timescale at bottom
+  ctx.fillStyle = '#484f58';
+  ctx.font = (labelSize - 1) + 'px monospace';
+  ctx.textAlign = 'center';
+  ctx.strokeStyle = 'rgba(48,54,61,0.4)';
+  ctx.lineWidth = 0.5;
+  for (let s = 0; s <= HISTORY_SEC; s++) {
+    const x = leftMargin + (1 - s / HISTORY_SEC) * (w - leftMargin);
+    const label = s === 0 ? 'now' : `-${s}s`;
+    ctx.fillText(label, x, h - 3);
+    if (s > 0 && s < HISTORY_SEC) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h - 14); ctx.stroke();
+    }
+  }
+}
+
+// ─── SPECTROGRAM ─────────────────────────────────────────────────────
+let vizMode = 'pitch'; // 'pitch' or 'spectro'
+const SPECTRO_MIN_DB = -90;
+const SPECTRO_MAX_DB = -45;
+const SPECTRO_MIN_FREQ = 60;
+const SPECTRO_MAX_FREQ = 5000;
+
+// Friture-style LUT: flat Uint8Array, 256 × 3
+const spectroLUT = new Uint8Array(256 * 3);
+(function buildLUT() {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let r, g, b;
+    if (t < 0.25) {
+      const s = t / 0.25;
+      r = s * 40;  g = 0;  b = s * 80;
+    } else if (t < 0.45) {
+      const s = (t - 0.25) / 0.2;
+      r = 40 + s * 80;  g = 0;  b = 80 + s * 60;
+    } else if (t < 0.7) {
+      const s = (t - 0.45) / 0.25;
+      r = 120 + s * 135; g = s * 100; b = 140 * (1 - s);
+    } else if (t < 0.9) {
+      const s = (t - 0.7) / 0.2;
+      r = 255;  g = 100 + s * 155; b = s * 30;
+    } else {
+      const s = (t - 0.9) / 0.1;
+      r = 255;  g = 255;  b = 30 + s * 225;
+    }
+    spectroLUT[i * 3] = r;
+    spectroLUT[i * 3 + 1] = g;
+    spectroLUT[i * 3 + 2] = b;
+  }
+})();
+
+// Friture-style double-width ring buffer: write at offset AND offset+W
+// so we always have a contiguous W-wide region readable with one drawImage
+const SPECTRO_TIME_SEC = 10; // fixed 10-second window, matching pitch graph
+let spectroOC = null;
+let spectroOCtx = null;
+let spectroCursor = 0;
+let spectroPlotW = 0;
+let spectroPlotH = 0;
+let spectroFreqData = null;
+let spectroCol = null;     // pre-allocated 1px ImageData — reused every frame
+let spectroBinMap = null;  // pre-computed log-freq -> FFT bin
+let spectroLastColTime = 0; // timestamp of last column write
+let spectroMsPerPx = 0;     // milliseconds per pixel, derived from window size
+
+function buildBinMap(plotH, sr, fftSize) {
+  const logMinF = Math.log2(SPECTRO_MIN_FREQ);
+  const logMaxF = Math.log2(SPECTRO_MAX_FREQ);
+  spectroBinMap = new Float32Array(plotH);
+  for (let y = 0; y < plotH; y++) {
+    const logF = logMaxF - (y / (plotH - 1)) * (logMaxF - logMinF);
+    spectroBinMap[y] = Math.pow(2, logF) / (sr / fftSize);
+  }
+}
+
+// FFT-based pitch detection: O(n) — used in spectro mode instead of O(n²) autocorrelation
+function detectPitchFFT(freqData, sr, fftSize) {
+  const binCount = freqData.length;
+  const minBin = Math.ceil(60 / (sr / fftSize));   // 60 Hz
+  const maxBin = Math.floor(1000 / (sr / fftSize)); // 1000 Hz
+  let peakVal = -Infinity, peakBin = -1;
+  for (let i = minBin; i <= maxBin && i < binCount; i++) {
+    if (freqData[i] > peakVal) { peakVal = freqData[i]; peakBin = i; }
+  }
+  if (peakVal < SPECTRO_MIN_DB + 10) return null; // below noise floor
+  // Parabolic interpolation for sub-bin accuracy
+  let bin = peakBin;
+  if (peakBin > 0 && peakBin < binCount - 1) {
+    const y1 = freqData[peakBin - 1], y2 = freqData[peakBin], y3 = freqData[peakBin + 1];
+    const d = (y1 - y3) / (2 * (y1 - 2 * y2 + y3));
+    if (isFinite(d)) bin = peakBin + d;
+  }
+  const freq = bin * (sr / fftSize);
+  return (freq >= 60 && freq <= 1000) ? freq : null;
+}
+
+function renderSpectrogram() {
+  if (!ctx || !analyser) return;
+  const w = canvas.width, h = canvas.height;
+  const labelSize = Math.max(11, Math.min(14, Math.round(h / 18)));
+  const leftMargin = labelSize * 4;
+  const plotW = w - leftMargin;
+  const plotH = h - 16;
+
+  // FFT data already read in mainLoop when in spectro mode; read here only as fallback
+  if (!spectroFreqData) {
+    spectroFreqData = new Float32Array(analyser.frequencyBinCount);
+    analyser.getFloatFrequencyData(spectroFreqData);
+  }
+
+  const sr = audioCtx.sampleRate;
+  const binCount = analyser.frequencyBinCount;
+  const logMinF = Math.log2(SPECTRO_MIN_FREQ);
+  const logMaxF = Math.log2(SPECTRO_MAX_FREQ);
+  const dbRange = SPECTRO_MAX_DB - SPECTRO_MIN_DB;
+
+  // Init or resize: double-width offscreen canvas (Friture trick)
+  if (!spectroOC || spectroPlotW !== plotW || spectroPlotH !== plotH) {
+    spectroOC = document.createElement('canvas');
+    spectroOC.width = plotW * 2;  // double width!
+    spectroOC.height = plotH;
+    spectroOCtx = spectroOC.getContext('2d');
+    spectroOCtx.fillStyle = '#000';
+    spectroOCtx.fillRect(0, 0, plotW * 2, plotH);
+    spectroPlotW = plotW;
+    spectroPlotH = plotH;
+    spectroCursor = 0;
+    spectroCol = null;
+    spectroLastColTime = performance.now();
+    spectroMsPerPx = (SPECTRO_TIME_SEC * 1000) / plotW;
+    buildBinMap(plotH, sr, analyser.fftSize);
+  }
+
+  // Pre-allocate column ImageData once
+  if (!spectroCol || spectroCol.height !== plotH) {
+    spectroCol = spectroOCtx.createImageData(1, plotH);
+  }
+
+  // Time-based advancement: only write columns at the rate needed for 10s window
+  const now = performance.now();
+  const pxDue = Math.floor((now - spectroLastColTime) / spectroMsPerPx);
+
+  if (pxDue > 0) {
+    // Fill column pixels from current FFT data
+    const cd = spectroCol.data;
+    const fd = spectroFreqData;
+    const lut = spectroLUT;
+    const bm = spectroBinMap;
+    for (let y = 0; y < plotH; y++) {
+      const bin = bm[y];
+      const binLow = bin | 0;
+      const binHigh = binLow + 1 < binCount ? binLow + 1 : binLow;
+      const frac = bin - binLow;
+      const db = fd[binLow] + (fd[binHigh] - fd[binLow]) * frac;
+      const t = (db - SPECTRO_MIN_DB) / dbRange;
+      const lutIdx = (t < 0 ? 0 : t > 1 ? 255 : (t * 255 + 0.5) | 0) * 3;
+      const i = y << 2;
+      cd[i] = lut[lutIdx]; cd[i|1] = lut[lutIdx+1]; cd[i|2] = lut[lutIdx+2]; cd[i|3] = 255;
+    }
+
+    // Write same column data for however many pixels are due (usually 1, catch-up if lagging)
+    const cols = Math.min(pxDue, 4); // cap catch-up to avoid burst
+    for (let c = 0; c < cols; c++) {
+      spectroOCtx.putImageData(spectroCol, spectroCursor, 0);
+      spectroOCtx.putImageData(spectroCol, spectroCursor + spectroPlotW, 0);
+      spectroCursor = (spectroCursor + 1) % spectroPlotW;
+    }
+    spectroLastColTime += pxDue * spectroMsPerPx;
+  }
+
+  // Single contiguous blit — always readable from spectroCursor
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(spectroOC, spectroCursor, 0, spectroPlotW, plotH, leftMargin, 0, spectroPlotW, plotH);
+
+  // Frequency labels (log scale)
+  const freqLabels = [100, 200, 500, 1000, 2000, 5000];
+  ctx.font = labelSize + 'px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#484f58';
+  ctx.strokeStyle = 'rgba(48,54,61,0.4)';
+  ctx.lineWidth = 0.5;
+  for (const f of freqLabels) {
+    if (f < SPECTRO_MIN_FREQ || f > SPECTRO_MAX_FREQ) continue;
+    const logF = Math.log2(f);
+    const y = ((logMaxF - logF) / (logMaxF - logMinF)) * plotH;
+    if (y < 10 || y > plotH - 10) continue;
+    ctx.fillText(f >= 1000 ? (f / 1000) + 'k' : f + '', leftMargin - 4, y + 4);
+    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Target lines
+  if (graphTargets.length > 0) {
+    ctx.strokeStyle = 'rgba(240,136,62,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 3]);
+    for (const note of graphTargets) {
+      const f = NOTE_FREQ_MAP[note];
+      if (f < SPECTRO_MIN_FREQ || f > SPECTRO_MAX_FREQ) continue;
+      const logF = Math.log2(f);
+      const y = ((logMaxF - logF) / (logMaxF - logMinF)) * plotH;
+      ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
+      ctx.fillStyle = '#f0883e';
+      ctx.fillText(note, leftMargin - 4, y + 4);
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Target zone
+  if (graphZone) {
+    const zLowF = NOTE_FREQ_MAP[graphZone.low];
+    const zHighF = NOTE_FREQ_MAP[graphZone.high];
+    const yHigh = ((logMaxF - Math.log2(zHighF)) / (logMaxF - logMinF)) * plotH;
+    const yLow = ((logMaxF - Math.log2(zLowF)) / (logMaxF - logMinF)) * plotH;
+    ctx.strokeStyle = 'rgba(240,136,62,0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(leftMargin, yLow); ctx.lineTo(w, yLow); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(leftMargin, yHigh); ctx.lineTo(w, yHigh); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Custom lines
+  drawCustomLines(leftMargin);
+
+  // Time labels at bottom
+  ctx.fillStyle = '#484f58';
+  ctx.font = (labelSize - 1) + 'px monospace';
+  ctx.textAlign = 'center';
+  ctx.strokeStyle = 'rgba(48,54,61,0.4)';
+  ctx.lineWidth = 0.5;
+  for (let s = 0; s <= SPECTRO_TIME_SEC; s++) {
+    const x = leftMargin + (1 - s / SPECTRO_TIME_SEC) * (w - leftMargin);
+    const label = s === 0 ? 'now' : `-${s}s`;
+    ctx.fillText(label, x, h - 3);
+    if (s > 0 && s < SPECTRO_TIME_SEC) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, plotH); ctx.stroke();
+    }
+  }
+}
+
+// ─── CUSTOM LINES & CURSOR ──────────────────────────────────────────
+const customLines = []; // [{freq, note, label, color}]
+const LINE_COLORS = ['#7ee8fa','#f0883e','#3fb950','#f472b6','#d29922','#a78bfa','#ff6b6b','#38bdf8','#fbbf24','#34d399'];
+let lineColorIdx = 0;
+let canvasMouseDown = false;
+
+// Convert canvas Y to frequency, accounting for current view mode
+function yToFreq(yCanvas) {
+  const h = canvas.height;
+  const labelSize = Math.max(11, Math.min(14, Math.round(h / 18)));
+  const leftMargin = labelSize * 4;
+  const plotH = h - 16;
+  if (vizMode === 'spectro') {
+    const logMinF = Math.log2(SPECTRO_MIN_FREQ);
+    const logMaxF = Math.log2(SPECTRO_MAX_FREQ);
+    const y = Math.max(0, Math.min(plotH - 1, yCanvas));
+    const logF = logMaxF - (y / (plotH - 1)) * (logMaxF - logMinF);
+    return Math.pow(2, logF);
+  } else {
+    const range = getGraphRange();
+    const logLow = Math.log2(range.low);
+    const logHigh = Math.log2(range.high);
+    const ratio = 1 - yCanvas / h;
+    const logF = logLow + ratio * (logHigh - logLow);
+    return Math.pow(2, logF);
+  }
+}
+
+function freqToNoteLabel(freq) {
+  const info = freqToNote(freq);
+  if (!info) return { note: '?', label: freq.toFixed(0) + ' Hz' };
+  const cStr = info.cents === 0 ? '' : (info.cents > 0 ? '+' : '') + info.cents + 'c';
+  return { note: info.note, label: info.note + (cStr ? ' ' + cStr : '') + ' (' + freq.toFixed(1) + ' Hz)' };
+}
+
+function addCustomLine(freq) {
+  const info = freqToNoteLabel(freq);
+  const color = LINE_COLORS[lineColorIdx % LINE_COLORS.length];
+  lineColorIdx++;
+  customLines.push({ freq, note: info.note, label: info.note + ' (' + freq.toFixed(0) + ' Hz)', color });
+  renderCustomLinesList();
+}
+
+function removeCustomLine(idx) {
+  customLines.splice(idx, 1);
+  renderCustomLinesList();
+}
+
+function renderCustomLinesList() {
+  const el = document.getElementById('customLinesList');
+  if (!el) return;
+  if (customLines.length === 0) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--text2);">Right-click graph to pin note lines</span>';
+    return;
+  }
+  el.innerHTML = customLines.map((l, i) =>
+    `<span class="custom-line-chip" style="color:${l.color};border-color:${l.color}44"><span style="color:${l.color}">${l.label}</span><button class="cl-del" data-idx="${i}">&times;</button></span>`
+  ).join('') + '<button class="cl-clear" style="font-size:11px;padding:2px 8px;border-radius:4px;background:none;border:1px solid var(--border);color:var(--text2);cursor:pointer;">Clear all</button>';
+  el.querySelectorAll('.cl-del').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      removeCustomLine(parseInt(btn.dataset.idx));
+    });
+  });
+  el.querySelector('.cl-clear').addEventListener('click', () => {
+    customLines.length = 0;
+    lineColorIdx = 0;
+    renderCustomLinesList();
+  });
+}
+
+// Draw custom lines on canvas (called from both renderers)
+function drawCustomLines(leftMargin) {
+  if (customLines.length === 0) return;
+  const w = canvas.width, h = canvas.height;
+  const labelSize = Math.max(11, Math.min(14, Math.round(h / 18)));
+  ctx.save();
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 4]);
+  ctx.font = (labelSize - 1) + 'px monospace';
+  ctx.textAlign = 'left';
+  for (const line of customLines) {
+    let y;
+    if (vizMode === 'spectro') {
+      const plotH = h - 16;
+      const logMinF = Math.log2(SPECTRO_MIN_FREQ);
+      const logMaxF = Math.log2(SPECTRO_MAX_FREQ);
+      const logF = Math.log2(line.freq);
+      y = ((logMaxF - logF) / (logMaxF - logMinF)) * plotH;
+      if (y < 0 || y > plotH) continue;
+    } else {
+      y = freqToY(line.freq);
+      if (y < 0 || y > h) continue;
+    }
+    ctx.strokeStyle = line.color;
+    ctx.fillStyle = line.color;
+    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
+    ctx.fillText(line.note, leftMargin + 4, y - 4);
+  }
+  ctx.restore();
+}
+
+// ─── STAGE DEFINITIONS ──────────────────────────────────────────────
+const WARMUP_NOTES = ['C3','D3','E3','F#3','G#3','A#3'];
+const COUNT_NOTES = ['F3','G#3'];
+const TARGET_ZONE = { low: 'F3', high: 'A#3' };
+const VOWELS = [
+  { vowel: 'A', word: 'as in "pay"' },
+  { vowel: 'E', word: 'as in "see"' },
+  { vowel: 'O', word: 'as in "toe"' },
+  { vowel: 'OO', word: 'as in "through"' },
+];
+
+const STAGES = [
+  { id: 'warmup', name: '1. Warm-up', short: 'Warm-up' },
+  { id: 'counting', name: '2. Counting', short: 'Counting' },
+  { id: 'blend-up', name: '3. Blend Up', short: 'Blend Up' },
+  { id: 'blend-down', name: '4. Blend Down', short: 'Blend Down' },
+  { id: 'sentences', name: '5. Sentences', short: 'Sentences' },
+  { id: 'resonance', name: '6. Resonance', short: 'Resonance' },
+  { id: 'free', name: '7. Free Practice', short: 'Free' },
+];
+
+// ─── APP STATE ───────────────────────────────────────────────────────
+let currentStage = 0;
+let sessionStartTime = null;
+let sessionTimerInterval = null;
+let stageTimer = null;
+let stageTimerEnd = null;
+
+// Per-stage state
+let warmupStep = 0;
+let warmupTimerActive = false;
+let countStep = 0; // 0-3: F3 x2, G#3 x2
+let blendUpAttempts = 0;
+let blendUpRecordings = [];
+let blendDownAttempts = 0;
+let blendDownRecordings = [];
+let sentenceList = 0;
+let sentenceIdx = 0;
+let sentenceRecordings = [];
+let resonanceStep = 0; // 0=yawn, 1-4=vowels
+let starterIdx = 0;
+let freeRecordings = [];
+let isExRecording = false;
+let stagesCompleted = new Set();
+let targetNoteKey = null; // actual note name for pitch feedback, null = use zone only
+
+// ─── UI RENDERING ────────────────────────────────────────────────────
+function renderStageNav() {
+  const nav = document.getElementById('stageNav');
+  nav.innerHTML = STAGES.map((s, i) => {
+    const cls = i === currentStage ? 'active' : (stagesCompleted.has(i) ? 'done' : '');
+    return `<button class="stage-pill ${cls}" data-stage="${i}">${s.short}</button>`;
+  }).join('');
+  nav.querySelectorAll('.stage-pill').forEach(btn => {
+    btn.addEventListener('click', () => setStage(parseInt(btn.dataset.stage)));
+  });
+}
+
+function setStage(n) {
+  if (n < 0 || n >= STAGES.length) return;
+  if (warmupTimerActive) clearInterval(stageTimer);
+  warmupTimerActive = false;
+  stopReference();
+  if (isExRecording) { isExRecording = false; stopExerciseRec(); }
+  feedbackState = 'off';
+  zoneFeedback = 'off';
+  currentStage = n;
+  renderStageNav();
+  renderCurrentStage();
+  updateNavButtons();
+}
+
+function updateNavButtons() {
+  document.getElementById('prevBtn').disabled = currentStage === 0;
+  document.getElementById('nextBtn').textContent = currentStage === STAGES.length - 1 ? 'Finish' : 'Next Stage';
+}
+
+function completeStage() {
+  stagesCompleted.add(currentStage);
+  if (currentStage < STAGES.length - 1) setStage(currentStage + 1);
+  else renderStageNav();
+}
+
+function renderCurrentStage() {
+  const el = document.getElementById('stageContent');
+  switch (STAGES[currentStage].id) {
+    case 'warmup': renderWarmup(el); break;
+    case 'counting': renderCounting(el); break;
+    case 'blend-up': renderBlendUp(el); break;
+    case 'blend-down': renderBlendDown(el); break;
+    case 'sentences': renderSentences(el); break;
+    case 'resonance': renderResonance(el); break;
+    case 'free': renderFree(el); break;
+  }
+}
+
+// ── Stage: Warm-up ──
+function renderWarmup(el) {
+  const note = WARMUP_NOTES[warmupStep] || WARMUP_NOTES[0];
+  graphTargets = [note];
+  graphZone = null;
+  targetNoteKey = note;
+  document.getElementById('targetNote').textContent = note;
+
+  el.innerHTML = `
+    <div class="stage-title">Warm-up: Sustained Tones</div>
+    <div class="stage-desc">Sing "ahh" on each note for 10 seconds. Match the target pitch shown on the graph.</div>
+    <div class="substep-dots" id="warmupDots"></div>
+    <div class="substep-label">Note ${warmupStep + 1} of ${WARMUP_NOTES.length}: <strong style="color:var(--target)">${note}</strong> (${Math.round(NOTE_FREQ_MAP[note])} Hz)</div>
+    <div class="stage-timer" id="warmupTimer">10.0</div>
+    <div class="controls controls-center">
+      <button id="warmupRefBtn">Hold for Reference</button>
+      <button id="warmupStartBtn" class="primary">Start 10s Timer</button>
+      <button id="warmupSkipBtn" class="sm">Skip Note</button>
+    </div>
+  `;
+
+  const dots = document.getElementById('warmupDots');
+  dots.innerHTML = WARMUP_NOTES.map((n, i) => {
+    const cls = i < warmupStep ? 'done' : (i === warmupStep ? 'active' : '');
+    return `<div class="substep-dot ${cls}"></div>`;
+  }).join('');
+
+  graphCenterFreq = NOTE_FREQ_MAP[note];
+  bindHoldRef('warmupRefBtn', note);
+  document.getElementById('warmupSkipBtn').onclick = () => {
+    if (warmupTimerActive) { clearInterval(stageTimer); warmupTimerActive = false; }
+    advanceWarmup();
+  };
+  document.getElementById('warmupStartBtn').onclick = () => {
+    if (warmupTimerActive) return;
+    warmupTimerActive = true;
+    const btn = document.getElementById('warmupStartBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sustaining...';
+    stageTimerEnd = Date.now() + 10000;
+    stageTimer = setInterval(() => {
+      const rem = Math.max(0, (stageTimerEnd - Date.now()) / 1000);
+      const timerEl = document.getElementById('warmupTimer');
+      if (timerEl) {
+        timerEl.textContent = rem.toFixed(1);
+        timerEl.className = 'stage-timer' + (rem < 3 ? ' warning' : '');
+      }
+      if (rem <= 0) {
+        clearInterval(stageTimer);
+        warmupTimerActive = false;
+        // Show retry / next choice instead of auto-advancing
+        const timerDone = document.getElementById('warmupTimer');
+        if (timerDone) { timerDone.textContent = 'Done!'; timerDone.className = 'stage-timer'; }
+        btn.style.display = 'none';
+        const controls = btn.parentElement;
+        const retryBtn = document.createElement('button');
+        retryBtn.textContent = 'Retry Note';
+        retryBtn.onclick = () => renderWarmup(document.getElementById('stageContent'));
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = warmupStep >= WARMUP_NOTES.length - 1 ? 'Finish Warm-up' : 'Next Note';
+        nextBtn.className = 'primary';
+        nextBtn.onclick = () => advanceWarmup();
+        controls.appendChild(retryBtn);
+        controls.appendChild(nextBtn);
+      }
+    }, 50);
+  };
+}
+
+function advanceWarmup() {
+  warmupStep++;
+  if (warmupStep >= WARMUP_NOTES.length) {
+    warmupStep = 0;
+    completeStage();
+  } else {
+    renderWarmup(document.getElementById('stageContent'));
+  }
+}
+
+// ── Stage: Counting ──
+function renderCounting(el) {
+  const noteIdx = countStep < 2 ? 0 : 1;
+  const note = COUNT_NOTES[noteIdx];
+  const rep = (countStep % 2) + 1;
+  graphTargets = [note];
+  graphZone = null;
+  targetNoteKey = note;
+  document.getElementById('targetNote').textContent = note;
+
+  el.innerHTML = `
+    <div class="stage-title">Counting Exercise</div>
+    <div class="stage-desc">Count 1 through 5 with soft vocal weight on the target note. 2 repetitions per note.</div>
+    <div class="substep-dots" id="countDots"></div>
+    <div class="substep-label">Note: <strong style="color:var(--target)">${note}</strong> &mdash; Repetition ${rep} of 2</div>
+    <div style="text-align:center;font-size:32px;font-weight:700;padding:16px 0;letter-spacing:12px;color:var(--accent)">1 &nbsp; 2 &nbsp; 3 &nbsp; 4 &nbsp; 5</div>
+    <div class="controls controls-center">
+      <button id="countRefBtn">Hold for Reference</button>
+      <button id="countDoneBtn" class="primary">Done - Next</button>
+    </div>
+  `;
+
+  const dots = document.getElementById('countDots');
+  dots.innerHTML = [0,1,2,3].map(i => {
+    const cls = i < countStep ? 'done' : (i === countStep ? 'active' : '');
+    return `<div class="substep-dot ${cls}"></div>`;
+  }).join('');
+
+  graphCenterFreq = NOTE_FREQ_MAP[note];
+  bindHoldRef('countRefBtn', note);
+  document.getElementById('countDoneBtn').onclick = () => {
+    countStep++;
+    if (countStep >= 4) { countStep = 0; completeStage(); }
+    else renderCounting(document.getElementById('stageContent'));
+  };
+}
+
+// ── Stage: Blend Up ──
+function renderBlendUp(el) {
+  graphTargets = ['F3'];
+  graphZone = { low: 'F3', high: 'E4' };
+  targetNoteKey = null; // glide exercise — use zone feedback
+  document.getElementById('targetNote').textContent = 'F3 \u2191';
+
+  el.innerHTML = `
+    <div class="stage-title">Chest to Falsetto Blend</div>
+    <div class="stage-desc">Start on F3 in chest voice and glide upward into falsetto. Keep vocal weight consistently light throughout. Record each attempt and listen back. Minimum 3 attempts.</div>
+    <div style="text-align:center;padding:8px 0;">
+      <span style="font-size:14px;color:var(--text2)">Attempts: </span>
+      <span style="font-size:24px;font-weight:700;color:${blendUpAttempts >= 3 ? 'var(--success)' : 'var(--text)'}">${blendUpAttempts}</span>
+      <span style="font-size:14px;color:var(--text2)"> / 3 minimum</span>
+    </div>
+    <div class="controls controls-center">
+      <button id="blendUpRefBtn">Hold for F3</button>
+      <button id="blendUpRecBtn" class="${isExRecording ? 'danger' : 'primary'}">${isExRecording ? 'Stop Recording' : 'Record Attempt'}</button>
+    </div>
+    <div class="recordings" id="blendUpRecs"></div>
+  `;
+
+  renderRecList('blendUpRecs', blendUpRecordings);
+
+  graphCenterFreq = NOTE_FREQ_MAP['A3']; // center between F3 and falsetto range
+  bindHoldRef('blendUpRefBtn', 'F3');
+  document.getElementById('blendUpRecBtn').onclick = async () => {
+    if (isExRecording) {
+      isExRecording = false;
+      const url = await stopExerciseRec();
+      if (url) { blendUpAttempts++; blendUpRecordings.push(url); }
+      renderBlendUp(document.getElementById('stageContent'));
+    } else {
+      isExRecording = true;
+      startExerciseRec();
+      renderBlendUp(document.getElementById('stageContent'));
+    }
+  };
+}
+
+// ── Stage: Blend Down ──
+function renderBlendDown(el) {
+  graphTargets = ['F3'];
+  graphZone = { low: 'C3', high: 'F3' };
+  targetNoteKey = null; // glide exercise — use zone feedback
+  document.getElementById('targetNote').textContent = '\u2193 F3';
+
+  el.innerHTML = `
+    <div class="stage-title">Falsetto to Chest Blend</div>
+    <div class="stage-desc">Start in falsetto and glide downward into chest voice. Keep vocal weight consistently light with no cracking. Record each attempt and listen back. Minimum 3 attempts.</div>
+    <div style="text-align:center;padding:8px 0;">
+      <span style="font-size:14px;color:var(--text2)">Attempts: </span>
+      <span style="font-size:24px;font-weight:700;color:${blendDownAttempts >= 3 ? 'var(--success)' : 'var(--text)'}">${blendDownAttempts}</span>
+      <span style="font-size:14px;color:var(--text2)"> / 3 minimum</span>
+    </div>
+    <div class="controls controls-center">
+      <button id="blendDownRefBtn">Hold for F3</button>
+      <button id="blendDownRecBtn" class="${isExRecording ? 'danger' : 'primary'}">${isExRecording ? 'Stop Recording' : 'Record Attempt'}</button>
+    </div>
+    <div class="recordings" id="blendDownRecs"></div>
+  `;
+
+  renderRecList('blendDownRecs', blendDownRecordings);
+
+  graphCenterFreq = NOTE_FREQ_MAP['D3']; // center below F3 to show downward space
+  bindHoldRef('blendDownRefBtn', 'F3');
+  document.getElementById('blendDownRecBtn').onclick = async () => {
+    if (isExRecording) {
+      isExRecording = false;
+      const url = await stopExerciseRec();
+      if (url) { blendDownAttempts++; blendDownRecordings.push(url); }
+      renderBlendDown(document.getElementById('stageContent'));
+    } else {
+      isExRecording = true;
+      startExerciseRec();
+      renderBlendDown(document.getElementById('stageContent'));
+    }
+  };
+}
+
+// ── Stage: Harvard Sentences ──
+function renderSentences(el) {
+  graphTargets = [];
+  graphZone = TARGET_ZONE;
+  targetNoteKey = null;
+  graphCenterFreq = Math.sqrt(NOTE_FREQ_MAP['F3'] * NOTE_FREQ_MAP['A#3']);
+  document.getElementById('targetNote').textContent = 'F3\u2013A#3';
+
+  const list = HARVARD[sentenceList];
+  const nextSent = sentenceIdx < list.length - 1 ? list[sentenceIdx + 1] : '';
+  el.innerHTML = `
+    <div class="stage-title">Harvard Sentences</div>
+    <div class="stage-desc">Read each sentence inside the target zone (F3\u2013A#3). Aim for soft vocal weight and use all of the range available.</div>
+    <div class="list-selector">
+      <label>List:</label>
+      <select id="listSelect">${HARVARD.map((_, i) => `<option value="${i}" ${i === sentenceList ? 'selected' : ''}>List ${i + 1}</option>`).join('')}</select>
+      <button id="randListBtn" class="sm">Random</button>
+      <span style="color:var(--text2);font-size:13px;margin-left:8px">${sentenceIdx + 1} / ${list.length}</span>
+    </div>
+    <div class="sent-progress">${list.map((_, i) => `<div class="pip ${i < sentenceIdx ? 'done' : (i === sentenceIdx ? 'active' : '')}"></div>`).join('')}</div>
+    <div class="current-sentence">${list[sentenceIdx]}</div>
+    <div class="next-sentence">${nextSent ? 'Next: ' + nextSent : ''}</div>
+    <div class="controls controls-center">
+      <button id="sentPrevBtn" class="sm" ${sentenceIdx <= 0 ? 'disabled' : ''}>Prev</button>
+      <button id="sentNextBtn" class="primary">${sentenceIdx >= list.length - 1 ? 'Finish List' : 'Next Sentence'}</button>
+      <button id="sentRecBtn" class="${isExRecording ? 'danger sm' : 'sm'}">${isExRecording ? 'Stop Rec' : 'Record'}</button>
+    </div>
+    <div class="recordings" id="sentRecs"></div>
+  `;
+
+  renderRecList('sentRecs', sentenceRecordings);
+
+  document.getElementById('listSelect').onchange = (e) => {
+    sentenceList = parseInt(e.target.value);
+    sentenceIdx = 0;
+    renderSentences(document.getElementById('stageContent'));
+  };
+  document.getElementById('randListBtn').onclick = () => {
+    sentenceList = Math.floor(Math.random() * HARVARD.length);
+    sentenceIdx = 0;
+    renderSentences(document.getElementById('stageContent'));
+  };
+  document.getElementById('sentPrevBtn').onclick = () => {
+    if (sentenceIdx > 0) { sentenceIdx--; renderSentences(document.getElementById('stageContent')); }
+  };
+  document.getElementById('sentNextBtn').onclick = () => {
+    sentenceIdx++;
+    if (sentenceIdx >= list.length) {
+      sentenceIdx = 0;
+      completeStage();
+    } else {
+      renderSentences(document.getElementById('stageContent'));
+    }
+  };
+  document.getElementById('sentRecBtn').onclick = async () => {
+    if (isExRecording) {
+      isExRecording = false;
+      const url = await stopExerciseRec();
+      if (url) sentenceRecordings.push(url);
+      renderSentences(document.getElementById('stageContent'));
+    } else {
+      isExRecording = true;
+      startExerciseRec();
+      renderSentences(document.getElementById('stageContent'));
+    }
+  };
+}
+
+// ── Stage: Resonance ──
+function renderResonance(el) {
+  graphTargets = ['F3'];
+  graphZone = null;
+  targetNoteKey = 'F3';
+  document.getElementById('targetNote').textContent = 'F3';
+
+  el.innerHTML = `
+    <div class="stage-title">Dark to Bright Resonance</div>
+    <div class="stage-desc">
+      ${resonanceStep === 0
+        ? 'First, practice achieving a truly dark yawn. Make sure your lips don\'t move (use a mirror or camera to check).'
+        : 'On F3, move from dark to bright through these vowels. Keep lips still\u2014only change the inside of your mouth.'}
+    </div>
+    ${resonanceStep === 0 ? `
+      <div style="text-align:center;padding:20px 0;font-size:20px;color:var(--target)">Practice Dark Yawn</div>
+      <div class="controls controls-center">
+        <button id="resRefBtn">Hold for F3</button>
+        <button id="resNextBtn" class="primary">Ready \u2014 Move to Vowels</button>
+      </div>
+    ` : `
+      <div class="vowel-grid" id="vowelGrid">
+        ${VOWELS.map((v, i) => `
+          <div class="vowel-card ${i + 1 < resonanceStep ? 'done' : (i + 1 === resonanceStep ? 'active' : '')}">
+            <div class="vowel">${v.vowel}</div>
+            <div class="word">${v.word}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="substep-label">Step ${resonanceStep} of 4: <strong style="color:var(--target)">${VOWELS[resonanceStep - 1]?.vowel || ''}</strong> ${VOWELS[resonanceStep - 1]?.word || ''}</div>
+      <div class="controls controls-center">
+        <button id="resRefBtn">Hold for F3</button>
+        <button id="resNextBtn" class="primary">${resonanceStep >= 4 ? 'Done' : 'Next Vowel'}</button>
+      </div>
+    `}
+  `;
+
+  graphCenterFreq = NOTE_FREQ_MAP['F3'];
+  bindHoldRef('resRefBtn', 'F3');
+  document.getElementById('resNextBtn').onclick = () => {
+    resonanceStep++;
+    if (resonanceStep > 4) { resonanceStep = 0; completeStage(); }
+    else renderResonance(document.getElementById('stageContent'));
+  };
+}
+
+// ── Stage: Free Practice ──
+function renderFree(el) {
+  graphTargets = [];
+  graphZone = TARGET_ZONE;
+  targetNoteKey = null;
+  graphCenterFreq = Math.sqrt(NOTE_FREQ_MAP['F3'] * NOTE_FREQ_MAP['A#3']);
+  document.getElementById('targetNote').textContent = 'F3\u2013A#3';
+
+  const starter = STARTERS[starterIdx % STARTERS.length];
+  el.innerHTML = `
+    <div class="stage-title">Free Practice</div>
+    <div class="stage-desc">Put everything together. Answer conversation starters in your target voice. Stay in the target zone with soft vocal weight.</div>
+    <div class="starter-card" id="starterCard">${starter}</div>
+    <div class="controls controls-center">
+      <button id="freeNewBtn">New Question</button>
+      <button id="freeRecBtn" class="${isExRecording ? 'danger' : 'primary'}">${isExRecording ? 'Stop Recording' : 'Record'}</button>
+    </div>
+    <div class="recordings" id="freeRecs"></div>
+  `;
+
+  renderRecList('freeRecs', freeRecordings);
+
+  document.getElementById('freeNewBtn').onclick = () => {
+    starterIdx = Math.floor(Math.random() * STARTERS.length);
+    document.getElementById('starterCard').textContent = STARTERS[starterIdx];
+  };
+  document.getElementById('freeRecBtn').onclick = async () => {
+    if (isExRecording) {
+      isExRecording = false;
+      const url = await stopExerciseRec();
+      if (url) freeRecordings.push(url);
+      renderFree(document.getElementById('stageContent'));
+    } else {
+      isExRecording = true;
+      startExerciseRec();
+      renderFree(document.getElementById('stageContent'));
+    }
+  };
+}
+
+// ── Recording list helper ──
+function renderRecList(containerId, recordings) {
+  const el = document.getElementById(containerId);
+  if (!el || recordings.length === 0) return;
+  el.innerHTML = `<h4>Recordings (${recordings.length})</h4>` +
+    recordings.map((url, i) => `
+      <div class="rec-item">
+        <span>#${i + 1}</span>
+        <audio controls src="${url}"></audio>
+      </div>
+    `).join('');
+}
+
+// ─── PITCH FEEDBACK ──────────────────────────────────────────────────
+// Thresholds: <=25 cents = on pitch, <=50 = close, >50 = off
+// Hysteresis: once "on pitch", stay on until you exceed 35 cents (prevents flicker at boundary)
+const CENTS_ON = 25;
+const CENTS_ON_EXIT = 35;   // must go past this to leave "on" state
+const CENTS_CLOSE = 50;
+const CENTS_CLOSE_EXIT = 60;
+let feedbackState = 'off'; // 'on' | 'close' | 'off'
+
+function classifyPitch(absCents) {
+  if (feedbackState === 'on') {
+    if (absCents > CENTS_ON_EXIT) feedbackState = absCents <= CENTS_CLOSE_EXIT ? 'close' : 'off';
+  } else if (feedbackState === 'close') {
+    if (absCents <= CENTS_ON) feedbackState = 'on';
+    else if (absCents > CENTS_CLOSE_EXIT) feedbackState = 'off';
+  } else {
+    if (absCents <= CENTS_ON) feedbackState = 'on';
+    else if (absCents <= CENTS_CLOSE) feedbackState = 'close';
+  }
+  return feedbackState;
+}
+
+// Zone-based feedback: on / close / off with hysteresis
+let zoneFeedback = 'off';
+const ZONE_ON = 30;       // cents outside zone to still count as "in"
+const ZONE_ON_EXIT = 45;  // must exceed to leave "on"
+const ZONE_CLOSE = 80;    // cents outside zone for "close"
+const ZONE_CLOSE_EXIT = 100;
+
+function classifyZone(freq, zLow, zHigh) {
+  const centsBelow = freq < zLow ? 1200 * Math.log2(zLow / freq) : 0;
+  const centsAbove = freq > zHigh ? 1200 * Math.log2(freq / zHigh) : 0;
+  const centsOut = Math.max(centsBelow, centsAbove);
+  if (zoneFeedback === 'on') {
+    if (centsOut > ZONE_ON_EXIT) zoneFeedback = centsOut <= ZONE_CLOSE_EXIT ? 'close' : 'off';
+  } else if (zoneFeedback === 'close') {
+    if (centsOut <= ZONE_ON) zoneFeedback = 'on';
+    else if (centsOut > ZONE_CLOSE_EXIT) zoneFeedback = 'off';
+  } else {
+    if (centsOut <= ZONE_ON) zoneFeedback = 'on';
+    else if (centsOut <= ZONE_CLOSE) zoneFeedback = 'close';
+  }
+  return zoneFeedback;
+}
+
+// ─── MAIN LOOP ───────────────────────────────────────────────────────
+let animFrame = null;
+function mainLoop() {
+  // In spectro mode, skip O(n²) autocorrelation — use O(n) FFT peak instead
+  let rawFreq;
+  if (vizMode === 'spectro' && analyser) {
+    if (!spectroFreqData) spectroFreqData = new Float32Array(analyser.frequencyBinCount);
+    analyser.getFloatFrequencyData(spectroFreqData);
+    rawFreq = detectPitchFFT(spectroFreqData, audioCtx.sampleRate, analyser.fftSize);
+  } else {
+    rawFreq = detectPitch();
+  }
+  const freq = smoothedPitch(rawFreq);
+
+  const noteNameEl = document.getElementById('noteName');
+  const noteCentsEl = document.getElementById('noteCents');
+  const noteFreqEl = document.getElementById('noteFreq');
+
+  if (freq) {
+    const info = freqToNote(freq);
+    if (info) {
+      noteNameEl.textContent = info.note;
+      noteFreqEl.textContent = freq.toFixed(1) + ' Hz';
+
+      const tFreq = targetNoteKey ? NOTE_FREQ_MAP[targetNoteKey] : null;
+      if (tFreq) {
+        // Single-note feedback (warmup, counting, resonance)
+        const centsOff = Math.round(1200 * Math.log2(freq / tFreq));
+        const absCents = Math.abs(centsOff);
+        const state = classifyPitch(absCents);
+        if (state === 'on') {
+          noteCentsEl.textContent = 'On pitch!';
+          noteCentsEl.className = 'note-cents on';
+          noteNameEl.style.color = 'var(--success)';
+        } else if (state === 'close') {
+          noteCentsEl.textContent = (centsOff > 0 ? '+' : '') + centsOff + ' cents';
+          noteCentsEl.className = 'note-cents ' + (centsOff > 0 ? 'sharp' : 'flat');
+          noteNameEl.style.color = 'var(--warning)';
+        } else {
+          noteCentsEl.textContent = (centsOff > 0 ? '+' : '') + centsOff + ' cents';
+          noteCentsEl.className = 'note-cents ' + (centsOff > 0 ? 'sharp' : 'flat');
+          noteNameEl.style.color = 'var(--danger)';
+        }
+      } else if (graphZone) {
+        // Zone feedback (blend, sentences, free practice)
+        const zLow = NOTE_FREQ_MAP[graphZone.low];
+        const zHigh = NOTE_FREQ_MAP[graphZone.high];
+        const zState = classifyZone(freq, zLow, zHigh);
+        noteCentsEl.textContent = (info.cents > 0 ? '+' : '') + info.cents + ' cents';
+        if (zState === 'on') {
+          noteCentsEl.className = 'note-cents on';
+          noteNameEl.style.color = 'var(--success)';
+        } else if (zState === 'close') {
+          noteCentsEl.className = 'note-cents ' + (info.cents > 0 ? 'sharp' : 'flat');
+          noteNameEl.style.color = 'var(--warning)';
+        } else {
+          noteCentsEl.className = 'note-cents ' + (info.cents > 0 ? 'sharp' : 'flat');
+          noteNameEl.style.color = 'var(--danger)';
+        }
+      } else {
+        noteCentsEl.textContent = (info.cents > 0 ? '+' : '') + info.cents + ' cents';
+        noteCentsEl.className = 'note-cents';
+        noteNameEl.style.color = 'var(--text)';
+      }
+
+      pitchHistory.push({ time: Date.now(), freq });
+    }
+  } else {
+    noteNameEl.textContent = '--';
+    noteNameEl.style.color = 'var(--text2)';
+    noteCentsEl.innerHTML = '&nbsp;';
+    noteFreqEl.innerHTML = '&nbsp;';
+  }
+
+  if (vizMode === 'spectro') renderSpectrogram();
+  else renderGraph();
+  animFrame = requestAnimationFrame(mainLoop);
+}
+
+// ─── SESSION TIMER ───────────────────────────────────────────────────
+function startSessionTimer() {
+  sessionStartTime = Date.now();
+  sessionTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    document.getElementById('sessionTime').textContent = `${m}:${s}`;
+  }, 500);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────
+document.getElementById('startBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('splashError');
+  try {
+    await initAudio();
+  } catch (e) {
+    errEl.style.display = 'block';
+    errEl.textContent = 'Microphone access denied. Please allow microphone access and try again.';
+    return;
+  }
+
+  document.getElementById('splash').style.display = 'none';
+  document.getElementById('main').style.display = 'block';
+
+  initGraph();
+  renderStageNav();
+  renderCurrentStage();
+  updateNavButtons();
+  startSessionTimer();
+
+  // Randomize starting sentence list and conversation starter
+  sentenceList = Math.floor(Math.random() * HARVARD.length);
+  starterIdx = Math.floor(Math.random() * STARTERS.length);
+
+  document.getElementById('refVol').addEventListener('input', e => {
+    if (refGain) refGain.gain.value = e.target.value / 100;
+  });
+
+  // Viz mode toggle
+  document.getElementById('vizPitch').addEventListener('click', () => {
+    vizMode = 'pitch';
+    document.getElementById('vizPitch').classList.add('active');
+    document.getElementById('vizSpectro').classList.remove('active');
+    spectroOC = null; // reset waterfall on switch back
+  });
+  document.getElementById('vizSpectro').addEventListener('click', () => {
+    vizMode = 'spectro';
+    document.getElementById('vizSpectro').classList.add('active');
+    document.getElementById('vizPitch').classList.remove('active');
+    spectroOC = null; // fresh start
+  });
+
+  // Canvas mouse events for cursor note + right-click line pinning
+  const cursorEl = document.getElementById('cursorNote');
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.button === 0) canvasMouseDown = true;
+  });
+  canvas.addEventListener('mouseup', e => {
+    if (e.button === 0) { canvasMouseDown = false; cursorEl.style.display = 'none'; }
+  });
+  canvas.addEventListener('mouseleave', () => {
+    canvasMouseDown = false;
+    cursorEl.style.display = 'none';
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    if (!canvasMouseDown) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleY = canvas.height / rect.height;
+    const y = (e.clientY - rect.top) * scaleY;
+    const freq = yToFreq(y);
+    if (freq < 20 || freq > 10000) { cursorEl.style.display = 'none'; return; }
+    const info = freqToNoteLabel(freq);
+    cursorEl.textContent = info.label;
+    cursorEl.style.display = 'block';
+    cursorEl.style.left = (e.clientX - canvas.parentElement.getBoundingClientRect().left + 12) + 'px';
+    cursorEl.style.top = (e.clientY - canvas.parentElement.getBoundingClientRect().top - 10) + 'px';
+  });
+
+  canvas.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const scaleY = canvas.height / rect.height;
+    const y = (e.clientY - rect.top) * scaleY;
+    const freq = yToFreq(y);
+    if (freq >= 20 && freq <= 10000) addCustomLine(freq);
+  });
+
+  renderCustomLinesList();
+
+  animFrame = requestAnimationFrame(mainLoop);
+});
+
+document.getElementById('prevBtn').addEventListener('click', () => setStage(currentStage - 1));
+document.getElementById('nextBtn').addEventListener('click', () => {
+  if (currentStage === STAGES.length - 1) {
+    stagesCompleted.add(currentStage);
+    renderStageNav();
+    alert('Practice session complete! Great work.');
+  } else {
+    completeStage();
+  }
+});
+
+// Session recording
+document.getElementById('sessionRecBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('sessionRecBtn');
+  const dl = document.getElementById('sessionDownload');
+  if (isSessionRecording) {
+    const url = await stopSessionRec();
+    btn.textContent = 'Record Session';
+    btn.classList.remove('danger');
+    if (url) {
+      dl.style.display = 'inline-block';
+      dl.onclick = () => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `voice-practice-${new Date().toISOString().slice(0, 10)}.webm`;
+        a.click();
+      };
+    }
+  } else {
+    startSessionRec();
+    btn.innerHTML = '<span class="rec-dot"></span> Stop Recording';
+    btn.classList.add('danger');
+    dl.style.display = 'none';
+  }
+});
+</script>
+<div class="app-footer">v0.6.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+</body>
+</html>
