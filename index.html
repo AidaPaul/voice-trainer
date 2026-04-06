@@ -240,6 +240,23 @@ function freqToNote(freq) {
   return { note, cents, freq };
 }
 
+// Unbounded note name from any frequency (Friture approach)
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function freqToNoteName(freq) {
+  const semitone = Math.round(Math.log2(freq / 440) * 12) + 9;
+  const octave = Math.floor(semitone / 12) + 4;
+  const idx = ((semitone % 12) + 12) % 12;
+  return NOTE_NAMES[idx] + octave;
+}
+function noteNameToFreq(name) {
+  const m = name.match(/^([A-G]#?)(\d+)$/);
+  if (!m) return 0;
+  const idx = NOTE_NAMES.indexOf(m[1]);
+  const octave = parseInt(m[2]);
+  const semitone = (octave - 4) * 12 + idx - 9;
+  return 440 * Math.pow(2, semitone / 12);
+}
+
 // Graph note range (default, overridden dynamically by target centering)
 const GRAPH_DEFAULT_LOW_FREQ = noteFreq('A2');
 const GRAPH_DEFAULT_HIGH_FREQ = noteFreq('A4');
@@ -760,7 +777,8 @@ function renderSpectrogram() {
   const w = canvas.width, h = canvas.height;
   const labelSize = Math.max(11, Math.min(14, Math.round(h / 18)));
   const leftMargin = labelSize * 4;
-  const plotW = w - leftMargin;
+  const rightMargin = labelSize * 4;
+  const plotW = w - leftMargin - rightMargin;
   const plotH = h - 16;
 
   // FFT data already read in mainLoop when in spectro mode; read here only as fallback
@@ -834,37 +852,38 @@ function renderSpectrogram() {
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(spectroOC, spectroCursor, 0, spectroPlotW, plotH, leftMargin, 0, spectroPlotW, plotH);
 
-  // Frequency labels (log scale)
-  const freqLabels = [100, 200, 500, 1000, 2000, 5000];
+  // Note labels on left, Hz labels on right
   ctx.font = labelSize + 'px monospace';
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#484f58';
   ctx.strokeStyle = 'rgba(48,54,61,0.4)';
   ctx.lineWidth = 0.5;
-  for (const f of freqLabels) {
-    if (f < SPECTRO_MIN_FREQ || f > SPECTRO_MAX_FREQ) continue;
+  const minNoteGap = labelSize + 4;
+  let lastNoteLabelY = -Infinity;
+  // Generate all semitones in the visible range
+  const lowestSemi = Math.floor(Math.log2(SPECTRO_MIN_FREQ / 440) * 12);
+  const highestSemi = Math.ceil(Math.log2(SPECTRO_MAX_FREQ / 440) * 12);
+  for (let semi = highestSemi; semi >= lowestSemi; semi--) {
+    const f = 440 * Math.pow(2, semi / 12);
     const logF = Math.log2(f);
     const y = ((logMaxF - logF) / (logMaxF - logMinF)) * plotH;
     if (y < 10 || y > plotH - 10) continue;
-    ctx.fillText(f >= 1000 ? (f / 1000) + 'k' : f + '', leftMargin - 4, y + 4);
-    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
-  }
-
-  // Target lines
-  if (graphTargets.length > 0) {
-    ctx.strokeStyle = 'rgba(240,136,62,0.6)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 3]);
-    for (const note of graphTargets) {
-      const f = NOTE_FREQ_MAP[note];
-      if (f < SPECTRO_MIN_FREQ || f > SPECTRO_MAX_FREQ) continue;
-      const logF = Math.log2(f);
-      const y = ((logMaxF - logF) / (logMaxF - logMinF)) * plotH;
-      ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
-      ctx.fillStyle = '#f0883e';
-      ctx.fillText(note, leftMargin - 4, y + 4);
-    }
-    ctx.setLineDash([]);
+    const isTarget = graphTargets.some(n => NOTE_FREQ_MAP[n] && Math.abs(Math.log2(f / NOTE_FREQ_MAP[n])) < 0.01);
+    if (!isTarget && Math.abs(y - lastNoteLabelY) < minNoteGap) continue;
+    const noteName = freqToNoteName(f);
+    // Grid line
+    ctx.strokeStyle = isTarget ? 'rgba(240,136,62,0.5)' : 'rgba(48,54,61,0.4)';
+    ctx.lineWidth = isTarget ? 1.5 : 0.5;
+    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w - rightMargin, y); ctx.stroke();
+    // Note name on left
+    ctx.textAlign = 'right';
+    ctx.fillStyle = isTarget ? '#f0883e' : '#484f58';
+    ctx.fillText(noteName, leftMargin - 4, y + 4);
+    // Hz on right
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#484f58';
+    const hzLabel = f >= 1000 ? (f / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : Math.round(f) + '';
+    ctx.fillText(hzLabel, w - rightMargin + 4, y + 4);
+    ctx.lineWidth = 0.5;
+    lastNoteLabelY = y;
   }
 
   // Target zone
@@ -876,8 +895,8 @@ function renderSpectrogram() {
     ctx.strokeStyle = 'rgba(240,136,62,0.4)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
-    ctx.beginPath(); ctx.moveTo(leftMargin, yLow); ctx.lineTo(w, yLow); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(leftMargin, yHigh); ctx.lineTo(w, yHigh); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(leftMargin, yLow); ctx.lineTo(w - rightMargin, yLow); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(leftMargin, yHigh); ctx.lineTo(w - rightMargin, yHigh); ctx.stroke();
     ctx.setLineDash([]);
   }
 
@@ -891,7 +910,7 @@ function renderSpectrogram() {
   ctx.strokeStyle = 'rgba(48,54,61,0.4)';
   ctx.lineWidth = 0.5;
   for (let s = 0; s <= SPECTRO_TIME_SEC; s++) {
-    const x = leftMargin + (1 - s / SPECTRO_TIME_SEC) * (w - leftMargin);
+    const x = leftMargin + (1 - s / SPECTRO_TIME_SEC) * plotW;
     const label = s === 0 ? 'now' : `-${s}s`;
     ctx.fillText(label, x, h - 3);
     if (s > 0 && s < SPECTRO_TIME_SEC) {
@@ -1015,9 +1034,10 @@ function drawCustomLines(leftMargin) {
       y = freqToY(line.freq);
       if (y < 0 || y > h) continue;
     }
+    const rightM = vizMode === 'spectro' ? labelSize * 4 : 0;
     ctx.strokeStyle = line.color;
     ctx.fillStyle = line.color;
-    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w - rightM, y); ctx.stroke();
     ctx.fillText(line.note, leftMargin + 4, y - 4);
   }
   ctx.restore();
@@ -1762,6 +1782,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.7.5 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.8.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
