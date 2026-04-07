@@ -86,6 +86,18 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 .custom-line-chip .cl-del:hover { color: var(--danger); }
 .cursor-note { position: absolute; pointer-events: none; background: rgba(13,17,23,0.85); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font-size: 12px; font-family: monospace; color: #7ee8fa; white-space: nowrap; display: none; z-index: 10; }
 
+/* Spectrogram settings dialog */
+.spectro-settings-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; }
+.spectro-settings-overlay.open { display: flex; align-items: center; justify-content: center; }
+.spectro-settings { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; min-width: 280px; max-width: 90vw; }
+.spectro-settings h3 { font-size: 16px; margin-bottom: 14px; }
+.spectro-settings .ss-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.spectro-settings .ss-row label { font-size: 13px; color: var(--text2); white-space: nowrap; }
+.spectro-settings .ss-row input, .spectro-settings .ss-row select { width: 130px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 5px 8px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+.spectro-settings .ss-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.spectro-gear { background: none; border: none; color: var(--text2); font-size: 16px; padding: 4px 8px; cursor: pointer; }
+.spectro-gear:hover { color: var(--text); }
+
 /* Stage content */
 .stage-content { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px 28px; margin-bottom: 20px; }
 .stage-title { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
@@ -253,6 +265,24 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
     <div class="viz-toggle">
       <button id="vizPitch" class="active">Pitch</button>
       <button id="vizSpectro">Spectrogram</button>
+      <button class="spectro-gear" id="spectroGear" title="Spectrogram settings">&#9881;</button>
+    </div>
+
+    <div class="spectro-settings-overlay" id="spectroSettingsOverlay">
+      <div class="spectro-settings">
+        <h3>Spectrogram settings</h3>
+        <div class="ss-row"><label>Time range (s):</label><input id="ssTime" type="number" min="1" max="30" step="1"></div>
+        <div class="ss-row"><label>FFT Size:</label><select id="ssFft"><option value="1024">1024 points</option><option value="2048">2048 points</option><option value="4096">4096 points</option><option value="8192">8192 points</option><option value="16384">16384 points</option></select></div>
+        <div class="ss-row"><label>Min frequency (Hz):</label><input id="ssMinFreq" type="number" min="20" max="2000" step="10"></div>
+        <div class="ss-row"><label>Max frequency (Hz):</label><input id="ssMaxFreq" type="number" min="200" max="20000" step="100"></div>
+        <div class="ss-row"><label>Min color (dB):</label><input id="ssMinDb" type="number" min="-120" max="-10" step="5"></div>
+        <div class="ss-row"><label>Max color (dB):</label><input id="ssMaxDb" type="number" min="-120" max="0" step="5"></div>
+        <div class="ss-actions">
+          <button class="sm" id="ssDefaults">Defaults</button>
+          <button class="sm" id="ssCancel">Cancel</button>
+          <button class="sm primary" id="ssApply">Apply</button>
+        </div>
+      </div>
     </div>
     <div style="position:relative;">
       <canvas id="pitchCanvas"></canvas>
@@ -494,7 +524,7 @@ async function initAudio() {
   // Analysis context (no output needed — just reads mic)
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 4096;
+  analyser.fftSize = spectroFftSize;
   const src = audioCtx.createMediaStreamSource(mediaStream);
   src.connect(analyser);
   pitchBuf = new Float32Array(analyser.fftSize);
@@ -544,6 +574,84 @@ function setVizPref(mode) {
     pitchBtn.classList.remove('active');
   });
 })();
+
+// ─── SPECTROGRAM SETTINGS (cookie) ──────────────────────────────────
+function loadSpectroSettings() {
+  const m = document.cookie.match(/(?:^|; )spectroSettings=([^;]+)/);
+  if (!m) return;
+  try {
+    const s = JSON.parse(decodeURIComponent(m[1]));
+    if (s.minDb != null) SPECTRO_MIN_DB = s.minDb;
+    if (s.maxDb != null) SPECTRO_MAX_DB = s.maxDb;
+    if (s.minFreq != null) SPECTRO_MIN_FREQ = s.minFreq;
+    if (s.maxFreq != null) SPECTRO_MAX_FREQ = s.maxFreq;
+    if (s.timeSec != null) SPECTRO_TIME_SEC = s.timeSec;
+    if (s.fftSize != null) {
+      spectroFftSize = s.fftSize;
+      if (analyser) {
+        analyser.fftSize = s.fftSize;
+        pitchBuf = new Float32Array(analyser.fftSize);
+      }
+    }
+  } catch (e) {}
+}
+function saveSpectroSettings() {
+  const s = { minDb: SPECTRO_MIN_DB, maxDb: SPECTRO_MAX_DB, minFreq: SPECTRO_MIN_FREQ, maxFreq: SPECTRO_MAX_FREQ, timeSec: SPECTRO_TIME_SEC, fftSize: spectroFftSize };
+  document.cookie = 'spectroSettings=' + encodeURIComponent(JSON.stringify(s)) + ';max-age=31536000;path=/;SameSite=Lax';
+}
+function applySpectroSettings() {
+  spectroOC = null; // force full rebuild
+  spectroFreqData = null;
+  if (analyser) {
+    spectroFreqData = new Float32Array(analyser.frequencyBinCount);
+    initUnifiedBuffer();
+  }
+}
+// Load saved settings on startup (before audio init — fftSize applied later)
+loadSpectroSettings();
+
+function openSpectroSettings() {
+  const ov = document.getElementById('spectroSettingsOverlay');
+  document.getElementById('ssTime').value = SPECTRO_TIME_SEC;
+  document.getElementById('ssFft').value = spectroFftSize;
+  document.getElementById('ssMinFreq').value = SPECTRO_MIN_FREQ;
+  document.getElementById('ssMaxFreq').value = SPECTRO_MAX_FREQ;
+  document.getElementById('ssMinDb').value = SPECTRO_MIN_DB;
+  document.getElementById('ssMaxDb').value = SPECTRO_MAX_DB;
+  ov.classList.add('open');
+}
+function closeSpectroSettings() {
+  document.getElementById('spectroSettingsOverlay').classList.remove('open');
+}
+document.getElementById('spectroGear').addEventListener('click', openSpectroSettings);
+document.getElementById('ssCancel').addEventListener('click', closeSpectroSettings);
+document.getElementById('spectroSettingsOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeSpectroSettings();
+});
+document.getElementById('ssDefaults').addEventListener('click', () => {
+  document.getElementById('ssTime').value = SPECTRO_DEFAULTS.timeSec;
+  document.getElementById('ssFft').value = SPECTRO_DEFAULTS.fftSize;
+  document.getElementById('ssMinFreq').value = SPECTRO_DEFAULTS.minFreq;
+  document.getElementById('ssMaxFreq').value = SPECTRO_DEFAULTS.maxFreq;
+  document.getElementById('ssMinDb').value = SPECTRO_DEFAULTS.minDb;
+  document.getElementById('ssMaxDb').value = SPECTRO_DEFAULTS.maxDb;
+});
+document.getElementById('ssApply').addEventListener('click', () => {
+  SPECTRO_TIME_SEC = Math.max(1, Math.min(30, +document.getElementById('ssTime').value || SPECTRO_DEFAULTS.timeSec));
+  SPECTRO_MIN_FREQ = Math.max(20, +document.getElementById('ssMinFreq').value || SPECTRO_DEFAULTS.minFreq);
+  SPECTRO_MAX_FREQ = Math.max(SPECTRO_MIN_FREQ + 100, +document.getElementById('ssMaxFreq').value || SPECTRO_DEFAULTS.maxFreq);
+  SPECTRO_MIN_DB = Math.min(-10, +document.getElementById('ssMinDb').value || SPECTRO_DEFAULTS.minDb);
+  SPECTRO_MAX_DB = Math.max(SPECTRO_MIN_DB + 5, Math.min(0, +document.getElementById('ssMaxDb').value || SPECTRO_DEFAULTS.maxDb));
+  const newFft = +document.getElementById('ssFft').value || SPECTRO_DEFAULTS.fftSize;
+  spectroFftSize = newFft;
+  if (analyser && analyser.fftSize !== newFft) {
+    analyser.fftSize = newFft;
+    pitchBuf = new Float32Array(analyser.fftSize);
+  }
+  saveSpectroSettings();
+  applySpectroSettings();
+  closeSpectroSettings();
+});
 
 function detectPitch() {
   if (!analyser) return null;
@@ -836,10 +944,14 @@ function renderGraph() {
 
 // ─── SPECTROGRAM ─────────────────────────────────────────────────────
 let vizMode = 'pitch'; // 'pitch' or 'spectro'
-const SPECTRO_MIN_DB = -90;
-const SPECTRO_MAX_DB = -45;
-const SPECTRO_MIN_FREQ = 60;
-const SPECTRO_MAX_FREQ = 1000;
+
+// Spectrogram settings — defaults, then overwritten from cookie
+const SPECTRO_DEFAULTS = { minDb: -90, maxDb: -45, minFreq: 60, maxFreq: 5000, timeSec: 10, fftSize: 4096 };
+let SPECTRO_MIN_DB = SPECTRO_DEFAULTS.minDb;
+let SPECTRO_MAX_DB = SPECTRO_DEFAULTS.maxDb;
+let SPECTRO_MIN_FREQ = SPECTRO_DEFAULTS.minFreq;
+let SPECTRO_MAX_FREQ = SPECTRO_DEFAULTS.maxFreq;
+let spectroFftSize = SPECTRO_DEFAULTS.fftSize; // saved separately for pre-audio-init loading
 
 // ─── UNIFIED DATA BUFFER ────────────────────────────────────────────
 // Always collects FFT + pitch at fixed rate, regardless of active view
@@ -903,7 +1015,7 @@ const spectroLUT = new Uint8Array(256 * 3);
 
 // Friture-style double-width ring buffer: write at offset AND offset+W
 // so we always have a contiguous W-wide region readable with one drawImage
-const SPECTRO_TIME_SEC = 10; // fixed 10-second window, matching pitch graph
+let SPECTRO_TIME_SEC = SPECTRO_DEFAULTS.timeSec;
 let spectroOC = null;
 let spectroOCtx = null;
 let spectroCursor = 0;
@@ -2152,6 +2264,6 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
   }
 });
 </script>
-<div class="app-footer">v0.12.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v0.13.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
