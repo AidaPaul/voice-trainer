@@ -148,6 +148,10 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 
 /* Footer nav */
 .footer-nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
+#main.focus-mode .stage-nav,
+#main.focus-mode .stage-content,
+#main.focus-mode .footer-nav { display: none; }
+#focusToggleBtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* Responsive */
 @media (max-width: 600px) {
@@ -218,6 +222,7 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
     <div style="display:flex;gap:8px;align-items:center;">
       <button id="sessionRecBtn" class="sm">Record Session</button>
       <button id="sessionDownload" class="sm" style="display:none">Download Recording</button>
+      <button id="focusToggleBtn" class="sm" title="Hide stages and focus on the pitch view">Focus</button>
     </div>
   </div>
 
@@ -2370,6 +2375,28 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
     dl.style.display = 'none';
   }
 });
+
+// Focus mode: hide stage nav / stage content / footer nav
+document.getElementById('focusToggleBtn').addEventListener('click', () => {
+  const main = document.getElementById('main');
+  const btn = document.getElementById('focusToggleBtn');
+  const on = main.classList.toggle('focus-mode');
+  btn.classList.toggle('active', on);
+  btn.textContent = on ? 'Exit Focus' : 'Focus';
+  try { localStorage.setItem('focusMode', on ? '1' : '0'); } catch(e) {}
+  // Canvas resize may depend on layout; trigger a reflow-based resize if one exists.
+  window.dispatchEvent(new Event('resize'));
+});
+
+// Restore focus mode preference
+try {
+  if (localStorage.getItem('focusMode') === '1') {
+    document.getElementById('main').classList.add('focus-mode');
+    const btn = document.getElementById('focusToggleBtn');
+    btn.classList.add('active');
+    btn.textContent = 'Exit Focus';
+  }
+} catch(e) {}
 </script>
 <div class="app-footer">v1.0.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
