@@ -125,7 +125,8 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 .rec-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .rec-item:last-child { border-bottom: none; }
 .rec-item span { font-size: 13px; color: var(--text2); }
-.rec-item audio { height: 32px; flex: 1; }
+.rec-item audio { height: 40px; flex: 1; min-width: 0; }
+.rec-item span { flex-shrink: 0; }
 
 /* Sentences */
 .current-sentence { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 28px 24px; text-align: center; font-size: 22px; line-height: 1.6; margin: 16px 0; min-height: 80px; display: flex; align-items: center; justify-content: center; }
@@ -160,6 +161,27 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 #main.focus-mode ~ .app-footer { display: none; }
 body:has(#main.focus-mode) { overflow: hidden; }
 #focusToggleBtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+#pauseToggleBtn.active { background: var(--warning); color: #000; border-color: var(--warning); }
+#pauseBadge { cursor: pointer; user-select: none; }
+
+/* Session summary modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 200; align-items: center; justify-content: center; padding: 16px; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; min-width: 320px; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; }
+.modal h2 { font-size: 22px; margin-bottom: 8px; }
+.modal .modal-sub { color: var(--text2); font-size: 14px; margin-bottom: 18px; }
+.modal .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin: 16px 0; }
+.modal .summary-grid .k { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.modal .summary-grid .v { font-size: 22px; font-weight: 600; font-family: monospace; }
+.modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+
+/* Splash error retry */
+.splash-error-box { display: none; background: rgba(207,95,95,0.1); border: 1px solid var(--danger); border-radius: 8px; padding: 12px 14px; margin-top: 8px; text-align: left; }
+.splash-error-box.open { display: block; }
+.splash-error-box p { color: var(--danger); font-size: 14px; margin-bottom: 10px; line-height: 1.5; }
+
+/* Custom lines chip list — allow wrapping cleanly on narrow screens */
+.custom-lines { flex-wrap: wrap; min-width: 0; }
 
 /* Responsive */
 @media (max-width: 600px) {
@@ -170,6 +192,11 @@ body:has(#main.focus-mode) { overflow: hidden; }
   #pitchCanvas { height: 180px; min-height: 140px; }
   .vowel-card { width: 80px; padding: 12px 8px; }
   button { padding: 8px 14px; font-size: 14px; }
+  .header { flex-wrap: wrap; row-gap: 8px; }
+  .rec-item { flex-wrap: wrap; }
+  .rec-item audio { width: 100%; flex-basis: 100%; }
+  .modal { padding: 18px; }
+  .modal .summary-grid { grid-template-columns: 1fr; }
 }
 .device-setup { text-align: left; max-width: 460px; width: 100%; margin: 4px 0; }
 .device-setup summary { font-size: 14px; color: var(--text); font-weight: 600; cursor: pointer; padding: 4px 0; }
@@ -218,16 +245,20 @@ body:has(#main.focus-mode) { overflow: hidden; }
     </div>
   </details>
   <button class="primary start-btn" id="startBtn">Start Practice Session</button>
-  <div id="splashError" class="error" style="display:none"></div>
+  <div id="splashError" class="splash-error-box" role="alert" aria-live="polite">
+    <p id="splashErrorMsg"></p>
+    <button id="splashRetryBtn" class="sm primary">Try again</button>
+  </div>
 </div>
 
 <div id="main">
   <div class="header">
     <div class="header-left">
       <div class="session-time">Session: <span id="sessionTime">00:00</span></div>
-      <div id="pauseBadge" style="display:none;background:var(--warning);color:#000;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;">PAUSED</div>
+      <div id="pauseBadge" role="button" tabindex="0" aria-label="Paused — click to resume" title="Click or press Space to resume" style="display:none;background:var(--warning);color:#000;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;">PAUSED</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
+      <button id="pauseToggleBtn" class="sm" title="Pause/resume the graph (Space)" aria-label="Pause or resume the graph">Pause</button>
       <button id="sessionRecBtn" class="sm">Record Session</button>
       <button id="sessionDownload" class="sm" style="display:none">Download Recording</button>
       <button id="focusToggleBtn" class="sm" title="Hide stages and focus on the pitch view">Focus</button>
@@ -249,8 +280,8 @@ body:has(#main.focus-mode) { overflow: hidden; }
       <div class="target-display" style="position:relative;">
         <div class="target-label">Target <span style="font-size:10px;opacity:0.6;">(click to edit)</span></div>
         <div class="target-note-row">
-          <div class="target-note" id="targetNote">--</div>
-          <button class="target-ref-btn" id="targetRefBtn" title="Hold to play reference" style="display:none;">&#9834;</button>
+          <div class="target-note" id="targetNote" role="button" tabindex="0" aria-label="Edit target note" aria-haspopup="true" aria-expanded="false">--</div>
+          <button class="target-ref-btn" id="targetRefBtn" title="Hold to play reference tone" aria-label="Hold to play reference tone for the target note" style="display:none;">&#9834;</button>
         </div>
         <div class="vol-control">
           <label>Tone vol</label>
@@ -287,12 +318,12 @@ body:has(#main.focus-mode) { overflow: hidden; }
     <div class="viz-toggle">
       <button id="vizPitch" class="active">Pitch</button>
       <button id="vizSpectro">Spectrogram</button>
-      <button class="spectro-gear" id="spectroGear" title="Spectrogram settings">&#9881;</button>
+      <button class="spectro-gear" id="spectroGear" title="Spectrogram settings" aria-label="Spectrogram settings">&#9881;</button>
     </div>
 
-    <div class="spectro-settings-overlay" id="spectroSettingsOverlay">
+    <div class="spectro-settings-overlay" id="spectroSettingsOverlay" role="dialog" aria-modal="true" aria-labelledby="spectroSettingsTitle">
       <div class="spectro-settings">
-        <h3>Spectrogram settings</h3>
+        <h3 id="spectroSettingsTitle">Spectrogram settings</h3>
         <div class="ss-row"><label>Time range (s):</label><input id="ssTime" type="number" min="1" max="30" step="1"></div>
         <div class="ss-row"><label>FFT Size:</label><select id="ssFft"><option value="1024">1024 points</option><option value="2048">2048 points</option><option value="4096">4096 points</option><option value="8192">8192 points</option><option value="16384">16384 points</option></select></div>
         <div class="ss-row"><label>Min frequency (Hz):</label><input id="ssMinFreq" type="number" min="20" max="2000" step="10"></div>
@@ -317,6 +348,23 @@ body:has(#main.focus-mode) { overflow: hidden; }
   <div class="footer-nav">
     <button id="prevBtn">Previous</button>
     <button id="nextBtn" class="primary">Next Stage</button>
+  </div>
+
+  <div class="modal-overlay" id="sessionSummaryOverlay" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
+    <div class="modal">
+      <h2 id="summaryTitle">Practice session complete</h2>
+      <div class="modal-sub">Nice work. Here's what you did this session.</div>
+      <div class="summary-grid">
+        <div><div class="k">Duration</div><div class="v" id="summaryDuration">00:00</div></div>
+        <div><div class="k">Stages completed</div><div class="v" id="summaryStages">0 / 0</div></div>
+      </div>
+      <div id="summaryRecordings" style="margin-top:8px;"></div>
+      <div class="modal-actions">
+        <button id="summaryCloseBtn" class="sm">Back to routine</button>
+        <button id="summaryDownloadBtn" class="sm" style="display:none;">Download session recording</button>
+        <button id="summaryRestartBtn" class="sm primary">Start a new session</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -712,6 +760,18 @@ document.getElementById('ssCancel').addEventListener('click', closeSpectroSettin
 document.getElementById('spectroSettingsOverlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeSpectroSettings();
 });
+// Esc closes any open modal
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('spectroSettingsOverlay').classList.contains('open')) { closeSpectroSettings(); return; }
+  const summary = document.getElementById('sessionSummaryOverlay');
+  if (summary && summary.classList.contains('open')) { summary.classList.remove('open'); return; }
+  const picker = document.getElementById('targetPicker');
+  if (picker && picker.classList.contains('open')) {
+    picker.classList.remove('open');
+    document.getElementById('targetNote').setAttribute('aria-expanded', 'false');
+  }
+});
 document.getElementById('ssDefaults').addEventListener('click', () => {
   document.getElementById('ssTime').value = SPECTRO_DEFAULTS.timeSec;
   document.getElementById('ssFft').value = SPECTRO_DEFAULTS.fftSize;
@@ -913,6 +973,8 @@ function initGraph() {
   ctx = canvas.getContext('2d');
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
+  // Orientation change fires after the new layout settles; debounce a touch.
+  window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 150));
 }
 function resizeCanvas() {
   const rect = canvas.parentElement.getBoundingClientRect();
@@ -1498,7 +1560,8 @@ let sessionStartTime = null;
 let sessionTimerInterval = null;
 let stageTimer = null;
 let stageTimerEnd = null;
-let stageState = {}; // per-stage state, reset on stage change
+let stageState = {}; // per-stage state for the CURRENT stage
+let stageStates = {}; // { [stageIdx]: stageState } — preserved across navigation
 let isExRecording = false;
 let stagesCompleted = new Set();
 let targetNoteKey = null; // actual note name for pitch feedback, null = use zone only
@@ -1901,14 +1964,25 @@ function renderStageNav() {
   });
 }
 
-function setStage(n) {
-  if (n < 0 || n >= ROUTINE.stages.length) return;
+async function setStage(n) {
+  if (n === currentStage || n < 0 || n >= ROUTINE.stages.length) return;
+  // If an exercise recording is in progress, ask before switching away.
+  if (isExRecording) {
+    const ok = confirm('An exercise recording is in progress. Switch stages? The recording will be saved to this stage.');
+    if (!ok) return;
+    isExRecording = false;
+    const url = await stopExerciseRec();
+    if (url) {
+      if (!stageState.recordings) stageState.recordings = [];
+      stageState.recordings.push(url);
+    }
+  }
   engine.clearTimer();
   stopReference();
-  if (isExRecording) { isExRecording = false; stopExerciseRec(); }
   feedbackState = 'off';
   zoneFeedback = 'off';
-  stageState = {};
+  stageStates[currentStage] = stageState;
+  stageState = stageStates[n] || {};
   currentStage = n;
   renderStageNav();
   renderCurrentStage();
@@ -2127,14 +2201,17 @@ if (ROUTINE.client) {
   clientEl.style.display = '';
 }
 
-document.getElementById('startBtn').addEventListener('click', async () => {
+async function tryStartSession() {
   const errEl = document.getElementById('splashError');
+  const errMsg = document.getElementById('splashErrorMsg');
+  errEl.classList.remove('open');
   try {
     await initAudio();
     initUnifiedBuffer();
   } catch (e) {
-    errEl.style.display = 'block';
-    errEl.textContent = 'Microphone access denied. Please allow microphone access and try again.';
+    errMsg.textContent = 'Microphone access was denied or the device is unavailable. Check your browser address bar (or site settings) to allow microphone access, then try again.';
+    errEl.classList.add('open');
+    setTimeout(() => document.getElementById('splashRetryBtn').focus(), 0);
     return;
   }
 
@@ -2244,16 +2321,22 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     }
   }
 
-  document.getElementById('targetNote').addEventListener('click', () => {
+  function toggleTargetPicker() {
     const picker = document.getElementById('targetPicker');
+    const targetEl = document.getElementById('targetNote');
     const wasOpen = picker.classList.contains('open');
     if (!wasOpen) syncPickerToState();
     picker.classList.toggle('open');
+    targetEl.setAttribute('aria-expanded', String(!wasOpen));
     if (!wasOpen) {
       const mode = document.getElementById('tpMode').value;
       const el = document.getElementById(mode === 'single' ? 'tpNote' : 'tpLow');
       setTimeout(() => { el.focus(); el.select(); }, 0);
     }
+  }
+  document.getElementById('targetNote').addEventListener('click', toggleTargetPicker);
+  document.getElementById('targetNote').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTargetPicker(); }
   });
 
   document.getElementById('tpMode').addEventListener('change', e => {
@@ -2311,6 +2394,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     }
     updateTargetRefBtn();
     document.getElementById('targetPicker').classList.remove('open');
+    document.getElementById('targetNote').setAttribute('aria-expanded', 'false');
   }
 
   document.getElementById('tpApply').addEventListener('click', applyTargetPicker);
@@ -2324,6 +2408,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
 
   document.getElementById('tpReset').addEventListener('click', () => {
     document.getElementById('targetPicker').classList.remove('open');
+    document.getElementById('targetNote').setAttribute('aria-expanded', 'false');
     renderCurrentStage();
   });
 
@@ -2333,6 +2418,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     const target = document.getElementById('targetNote');
     if (picker.classList.contains('open') && !picker.contains(e.target) && e.target !== target) {
       picker.classList.remove('open');
+      target.setAttribute('aria-expanded', 'false');
     }
   });
 
@@ -2364,46 +2450,111 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     btn.addEventListener('click', e => e.stopPropagation());
   })();
 
+  function togglePause() {
+    graphPaused = !graphPaused;
+    document.getElementById('pauseBadge').style.display = graphPaused ? 'inline-block' : 'none';
+    document.getElementById('pauseToggleBtn').classList.toggle('active', graphPaused);
+    document.getElementById('pauseToggleBtn').textContent = graphPaused ? 'Resume' : 'Pause';
+    if (graphPaused) {
+      pauseStartTime = Date.now();
+      pausedAtTime = Date.now();
+      pauseStartPerf = performance.now();
+    } else {
+      const pauseDuration = Date.now() - pauseStartTime;
+      for (const p of pitchHistory) p.time += pauseDuration;
+      const perfPauseDuration = performance.now() - pauseStartPerf;
+      for (let i = 0; i < uniCount; i++) {
+        const idx = (uniHead - 1 - i + UNI_CAP) % UNI_CAP;
+        uniTimes[idx] += perfPauseDuration;
+      }
+      uniLastTime = performance.now();
+      spectroLastColTime = performance.now();
+    }
+  }
+
   // Spacebar pause/unpause
   document.addEventListener('keydown', e => {
     const tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.code === 'Space' && document.getElementById('main').style.display === 'block') {
       e.preventDefault();
-      graphPaused = !graphPaused;
-      document.getElementById('pauseBadge').style.display = graphPaused ? 'inline-block' : 'none';
-      if (graphPaused) {
-        pauseStartTime = Date.now();
-        pausedAtTime = Date.now();
-        pauseStartPerf = performance.now();
-      } else {
-        // Shift all pitch history timestamps forward by pause duration
-        const pauseDuration = Date.now() - pauseStartTime;
-        for (const p of pitchHistory) p.time += pauseDuration;
-        // Shift unified buffer timestamps forward by pause duration
-        const perfPauseDuration = performance.now() - pauseStartPerf;
-        for (let i = 0; i < uniCount; i++) {
-          const idx = (uniHead - 1 - i + UNI_CAP) % UNI_CAP;
-          uniTimes[idx] += perfPauseDuration;
-        }
-        uniLastTime = performance.now();
-        spectroLastColTime = performance.now();
-      }
+      togglePause();
     }
   });
 
+  document.getElementById('pauseToggleBtn').addEventListener('click', togglePause);
+  document.getElementById('pauseBadge').addEventListener('click', togglePause);
+  document.getElementById('pauseBadge').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePause(); }
+  });
+
   animFrame = requestAnimationFrame(mainLoop);
-});
+}
+
+document.getElementById('startBtn').addEventListener('click', tryStartSession);
+document.getElementById('splashRetryBtn').addEventListener('click', tryStartSession);
 
 document.getElementById('prevBtn').addEventListener('click', () => setStage(currentStage - 1));
 document.getElementById('nextBtn').addEventListener('click', () => {
   if (currentStage === ROUTINE.stages.length - 1) {
     stagesCompleted.add(currentStage);
     renderStageNav();
-    alert('Practice session complete! Great work.');
+    showSessionSummary();
   } else {
     completeStage();
   }
+});
+
+// ─── SESSION SUMMARY MODAL ────────────────────────────────────────────
+function showSessionSummary() {
+  const overlay = document.getElementById('sessionSummaryOverlay');
+  document.getElementById('summaryDuration').textContent =
+    document.getElementById('sessionTime').textContent;
+  document.getElementById('summaryStages').textContent =
+    `${stagesCompleted.size} / ${ROUTINE.stages.length}`;
+
+  // Count exercise recordings across all stages
+  const allStates = { ...stageStates, [currentStage]: stageState };
+  let recCount = 0;
+  for (const k of Object.keys(allStates)) {
+    if (allStates[k] && allStates[k].recordings) recCount += allStates[k].recordings.length;
+  }
+  const recEl = document.getElementById('summaryRecordings');
+  recEl.innerHTML = recCount
+    ? `<div style="font-size:13px;color:var(--text2);">You saved <b style="color:var(--text);">${recCount}</b> exercise recording${recCount === 1 ? '' : 's'}. Switch back to individual stages to play them.</div>`
+    : '';
+
+  // Session recording download (if active recording)
+  const dl = document.getElementById('sessionDownload');
+  const summaryDl = document.getElementById('summaryDownloadBtn');
+  if (dl.style.display !== 'none' && dl.onclick) {
+    summaryDl.style.display = '';
+    summaryDl.onclick = dl.onclick;
+  } else {
+    summaryDl.style.display = 'none';
+  }
+
+  overlay.classList.add('open');
+  setTimeout(() => document.getElementById('summaryCloseBtn').focus(), 0);
+}
+function hideSessionSummary() {
+  document.getElementById('sessionSummaryOverlay').classList.remove('open');
+}
+document.getElementById('summaryCloseBtn').addEventListener('click', hideSessionSummary);
+document.getElementById('sessionSummaryOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) hideSessionSummary();
+});
+document.getElementById('summaryRestartBtn').addEventListener('click', () => {
+  hideSessionSummary();
+  // Reset routine progress but keep audio running.
+  stagesCompleted.clear();
+  stageStates = {};
+  stageState = {};
+  currentStage = 0;
+  sessionStartTime = Date.now();
+  renderStageNav();
+  renderCurrentStage();
+  updateNavButtons();
 });
 
 // Session recording
@@ -2453,6 +2604,6 @@ try {
   }
 } catch(e) {}
 </script>
-<div class="app-footer">v1.1.3 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v1.2.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
