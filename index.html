@@ -67,6 +67,10 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 .target-label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
 .target-note { font-size: 32px; font-weight: 600; color: var(--target); font-family: monospace; cursor: pointer; }
 .target-note:hover { opacity: 0.8; }
+.target-note-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.target-ref-btn { padding: 0; width: 28px; height: 28px; font-size: 16px; line-height: 1; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; color: var(--target); }
+.target-ref-btn:hover { background: var(--surface); }
+.target-ref-btn.active { background: var(--danger); color: #fff; border-color: var(--danger); }
 .target-picker { display: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: absolute; right: 24px; top: 60px; z-index: 20; min-width: 220px; }
 .target-picker.open { display: block; }
 .target-picker label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 4px; }
@@ -231,7 +235,10 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
       <div class="custom-lines" id="customLinesList"></div>
       <div class="target-display" style="position:relative;">
         <div class="target-label">Target <span style="font-size:10px;opacity:0.6;">(click to edit)</span></div>
-        <div class="target-note" id="targetNote">--</div>
+        <div class="target-note-row">
+          <div class="target-note" id="targetNote">--</div>
+          <button class="target-ref-btn" id="targetRefBtn" title="Hold to play reference" style="display:none;">&#9834;</button>
+        </div>
         <div class="vol-control">
           <label>Tone vol</label>
           <input type="range" id="refVol" min="0" max="100" value="60">
@@ -814,6 +821,11 @@ function stopReference() {
     setTimeout(() => { try { osc.stop(); } catch(e){} }, 60);
     refOsc = null; refGain = null;
   }
+}
+function updateTargetRefBtn() {
+  const btn = document.getElementById('targetRefBtn');
+  if (!btn) return;
+  btn.style.display = targetNoteKey ? '' : 'none';
 }
 function bindHoldRef(btnId, noteName) {
   const btn = document.getElementById(btnId);
@@ -1477,6 +1489,7 @@ const engine = {
       document.getElementById('targetNote').textContent = note;
       graphCenterFreq = NOTE_FREQ_MAP[note];
     }
+    updateTargetRefBtn();
   },
   setZone(low, high) {
     graphZone = { low, high };
@@ -1484,11 +1497,13 @@ const engine = {
     targetNoteKey = null;
     document.getElementById('targetNote').textContent = low + '\u2013' + high;
     graphCenterFreq = Math.sqrt(NOTE_FREQ_MAP[low] * NOTE_FREQ_MAP[high]);
+    updateTargetRefBtn();
   },
   clearFeedback() {
     graphTargets = [];
     graphZone = null;
     targetNoteKey = null;
+    updateTargetRefBtn();
   },
   setGraphTargets(notes) { graphTargets = notes; },
   setGraphCenter(freq) { graphCenterFreq = freq; },
@@ -1617,6 +1632,7 @@ function renderGlide(el, stage) {
     graphZone = { low: cfg.zone.low, high: cfg.zone.high };
     if (cfg.referenceNote) graphTargets = [cfg.referenceNote];
     targetNoteKey = null;
+    updateTargetRefBtn();
   }
   if (cfg.direction === 'up') {
     document.getElementById('targetNote').textContent = cfg.startNote + ' \u2191';
@@ -2245,6 +2261,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
       graphCenterFreq = midFreq;
       document.getElementById('targetNote').textContent = low + '\u2013' + high;
     }
+    updateTargetRefBtn();
     document.getElementById('targetPicker').classList.remove('open');
   });
 
@@ -2261,6 +2278,33 @@ document.getElementById('startBtn').addEventListener('click', async () => {
       picker.classList.remove('open');
     }
   });
+
+  // Target reference button (hold to play the currently selected single note)
+  (function() {
+    const btn = document.getElementById('targetRefBtn');
+    let playing = false;
+    const start = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!targetNoteKey || playing) return;
+      startReference(targetNoteKey);
+      btn.classList.add('active');
+      playing = true;
+    };
+    const stop = () => {
+      if (!playing) return;
+      stopReference();
+      btn.classList.remove('active');
+      playing = false;
+    };
+    btn.addEventListener('mousedown', start);
+    btn.addEventListener('mouseup', stop);
+    btn.addEventListener('mouseleave', stop);
+    btn.addEventListener('touchstart', start);
+    btn.addEventListener('touchend', stop);
+    btn.addEventListener('touchcancel', stop);
+    btn.addEventListener('click', e => e.stopPropagation());
+  })();
 
   // Spacebar pause/unpause
   document.addEventListener('keydown', e => {
