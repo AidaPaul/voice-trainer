@@ -159,7 +159,7 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 #main.focus-mode .stage-nav,
 #main.focus-mode .stage-content,
 #main.focus-mode .footer-nav { display: none; }
-#main.focus-mode { display: flex !important; flex-direction: column; height: 100vh; box-sizing: border-box; padding-top: 12px; padding-bottom: 12px; overflow: hidden; }
+#main.focus-mode { display: flex !important; flex-direction: column; height: 100vh; height: 100dvh; box-sizing: border-box; padding-top: 12px; padding-bottom: 12px; overflow: hidden; }
 #main.focus-mode .header { flex: 0 0 auto; margin-bottom: 8px; }
 #main.focus-mode .pitch-panel { flex: 1 1 auto; display: flex; flex-direction: column; margin-bottom: 0; min-height: 0; }
 #main.focus-mode .pitch-panel > .canvas-wrap { flex: 1 1 auto; min-height: 0; }
@@ -241,11 +241,11 @@ body:has(#main.focus-mode) { overflow: hidden; }
       <label>Microphone</label>
       <select id="inputDevice"><option value="">Default</option></select>
     </div>
-    <div class="device-row">
+    <div class="device-row" id="toneOutputRow">
       <label>Tones output</label>
       <select id="toneOutput"><option value="">Default</option></select>
     </div>
-    <div class="device-row">
+    <div class="device-row" id="playbackOutputRow">
       <label>Playback output</label>
       <select id="playbackOutput"><option value="">Default</option></select>
     </div>
@@ -633,15 +633,17 @@ let exerciseChunks = [];
 let isSessionRecording = false;
 let selectedPlaybackDeviceId = '';
 
-// Enumerate audio devices and populate selectors
+// Enumerate audio devices and populate selectors. Does NOT prompt for mic
+// permission — that would fail on iOS Safari outside a user gesture and
+// surprise users on Android before they've clicked Start. Labels are only
+// available after permission is granted, so we also re-populate after the
+// session starts.
 async function populateDevices() {
-  // Need a temporary stream to get labeled devices
-  let tempStream = null;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  let devices = [];
   try {
-    tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    devices = await navigator.mediaDevices.enumerateDevices();
   } catch (e) { return; }
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  tempStream.getTracks().forEach(t => t.stop());
 
   const inputSel = document.getElementById('inputDevice');
   const toneSel = document.getElementById('toneOutput');
@@ -650,13 +652,20 @@ async function populateDevices() {
   const inputs = devices.filter(d => d.kind === 'audioinput');
   const outputs = devices.filter(d => d.kind === 'audiooutput');
 
+  const prevIn = inputSel.value, prevTone = toneSel.value, prevPlay = playSel.value;
+
   inputSel.innerHTML = '<option value="">Default</option>' +
-    inputs.map(d => `<option value="${d.deviceId}">${d.label || 'Microphone ' + d.deviceId.slice(0,6)}</option>`).join('');
+    inputs.map((d, i) => `<option value="${d.deviceId}">${d.label || 'Microphone ' + (i + 1)}</option>`).join('');
 
   const outputOpts = '<option value="">Default</option>' +
-    outputs.map(d => `<option value="${d.deviceId}">${d.label || 'Speaker ' + d.deviceId.slice(0,6)}</option>`).join('');
+    outputs.map((d, i) => `<option value="${d.deviceId}">${d.label || 'Speaker ' + (i + 1)}</option>`).join('');
   toneSel.innerHTML = outputOpts;
   playSel.innerHTML = outputOpts;
+
+  // Preserve selection if the device still exists
+  if (prevIn && inputs.some(d => d.deviceId === prevIn)) inputSel.value = prevIn;
+  if (prevTone && outputs.some(d => d.deviceId === prevTone)) toneSel.value = prevTone;
+  if (prevPlay && outputs.some(d => d.deviceId === prevPlay)) playSel.value = prevPlay;
 }
 
 async function initAudio() {
@@ -669,6 +678,7 @@ async function initAudio() {
 
   // Analysis context (no output needed — just reads mic)
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) {} }
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = spectroFftSize;
   const src = audioCtx.createMediaStreamSource(mediaStream);
@@ -677,9 +687,14 @@ async function initAudio() {
 
   // Tone context (routed to selected output)
   toneCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (toneCtx.state === 'suspended') { try { await toneCtx.resume(); } catch (e) {} }
   if (toneOutputId && toneCtx.setSinkId) {
     try { await toneCtx.setSinkId(toneOutputId); } catch (e) { console.warn('setSinkId failed for tones:', e); }
   }
+
+  // Now that permission is granted, re-enumerate so labels are filled in
+  // (useful if the user re-opens the splash's audio device panel later).
+  populateDevices();
 }
 
 // Apply playback device to an audio element
@@ -690,6 +705,23 @@ function applyPlaybackDevice(audioEl) {
 }
 
 populateDevices();
+
+// Output-routing (setSinkId) is not supported on iOS Safari and some other
+// mobile browsers. Hide the selectors there — they'd silently no-op otherwise.
+(function hideUnsupportedOutputSelectors() {
+  const audioElSupports = typeof HTMLMediaElement !== 'undefined'
+    && typeof HTMLMediaElement.prototype.setSinkId === 'function';
+  const audioCtxSupports = typeof AudioContext !== 'undefined'
+    && typeof AudioContext.prototype.setSinkId === 'function';
+  if (!audioCtxSupports) {
+    const r = document.getElementById('toneOutputRow');
+    if (r) r.style.display = 'none';
+  }
+  if (!audioElSupports) {
+    const r = document.getElementById('playbackOutputRow');
+    if (r) r.style.display = 'none';
+  }
+})();
 
 // ─── DEFAULT VIZ PREFERENCE (cookie) ────────────────────────────────
 function getVizPref() {
@@ -936,11 +968,32 @@ function bindHoldRef(btnId, noteName) {
   btn.addEventListener('touchcancel', stop);
 }
 
-// Recording
+// Recording — pick a mimeType the browser can actually produce. iOS Safari
+// does not support WebM; it uses MP4 (or whatever ends up as the default).
+const RECORDER_MIME = (() => {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  for (const t of ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg']) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+})();
+function recorderExt(mime) {
+  if (!mime) return 'bin';
+  if (mime.includes('webm')) return 'webm';
+  if (mime.includes('mp4')) return 'm4a';
+  if (mime.includes('mpeg')) return 'mp3';
+  if (mime.includes('ogg')) return 'ogg';
+  return 'bin';
+}
+function makeRecorder(stream) {
+  return RECORDER_MIME ? new MediaRecorder(stream, { mimeType: RECORDER_MIME }) : new MediaRecorder(stream);
+}
+function recorderBlobType() { return RECORDER_MIME || 'application/octet-stream'; }
+
 function startExerciseRec() {
   if (!mediaStream) return;
   exerciseChunks = [];
-  exerciseMediaRec = new MediaRecorder(mediaStream);
+  exerciseMediaRec = makeRecorder(mediaStream);
   exerciseMediaRec.ondataavailable = e => { if (e.data.size > 0) exerciseChunks.push(e.data); };
   exerciseMediaRec.start();
 }
@@ -948,7 +1001,7 @@ function stopExerciseRec() {
   return new Promise(resolve => {
     if (!exerciseMediaRec || exerciseMediaRec.state === 'inactive') { resolve(null); return; }
     exerciseMediaRec.onstop = () => {
-      const blob = new Blob(exerciseChunks, { type: 'audio/webm' });
+      const blob = new Blob(exerciseChunks, { type: recorderBlobType() });
       resolve(URL.createObjectURL(blob));
     };
     exerciseMediaRec.stop();
@@ -958,7 +1011,7 @@ function stopExerciseRec() {
 function startSessionRec() {
   if (!mediaStream) return;
   sessionChunks = [];
-  sessionMediaRec = new MediaRecorder(mediaStream);
+  sessionMediaRec = makeRecorder(mediaStream);
   sessionMediaRec.ondataavailable = e => { if (e.data.size > 0) sessionChunks.push(e.data); };
   sessionMediaRec.start();
   isSessionRecording = true;
@@ -968,7 +1021,7 @@ function stopSessionRec() {
     if (!sessionMediaRec || sessionMediaRec.state === 'inactive') { resolve(null); return; }
     sessionMediaRec.onstop = () => {
       isSessionRecording = false;
-      const blob = new Blob(sessionChunks, { type: 'audio/webm' });
+      const blob = new Blob(sessionChunks, { type: recorderBlobType() });
       resolve(URL.createObjectURL(blob));
     };
     sessionMediaRec.stop();
@@ -2682,7 +2735,7 @@ document.getElementById('sessionRecBtn').addEventListener('click', async () => {
       dl.onclick = () => {
         const a = document.createElement('a');
         a.href = url;
-        a.download = `voice-practice-${new Date().toISOString().slice(0, 10)}.webm`;
+        a.download = `voice-practice-${new Date().toISOString().slice(0, 10)}.${recorderExt(RECORDER_MIME)}`;
         a.click();
       };
     }
@@ -2716,6 +2769,6 @@ try {
   }
 } catch(e) {}
 </script>
-<div class="app-footer">v1.2.1 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v1.3.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
