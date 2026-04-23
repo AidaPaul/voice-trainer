@@ -862,15 +862,22 @@ function detectPitch() {
   for (let i = 0; i < len / 2; i++) { if (Math.abs(buf[i]) < thr) { r1 = i; break; } }
   for (let i = 1; i < len / 2; i++) { if (Math.abs(buf[len - i]) < thr) { r2 = len - i; break; } }
 
-  const trimmed = buf.slice(r1, r2);
-  const tLen = trimmed.length;
+  const tLen = r2 - r1;
   if (tLen < 2) return null;
 
-  const c = new Float32Array(tLen);
+  // Reuse a single Float32Array across calls to avoid per-frame allocation.
+  if (!detectPitch._c || detectPitch._c.length < tLen) {
+    detectPitch._c = new Float32Array(len);
+  }
+  const c = detectPitch._c;
+  // Work directly on buf with r1 offset — no need to allocate a trimmed copy.
   for (let i = 0; i < tLen; i++) {
-    for (let j = 0; j < tLen - i; j++) {
-      c[i] += trimmed[j] * trimmed[j + i];
+    let sum = 0;
+    const lim = tLen - i;
+    for (let j = 0; j < lim; j++) {
+      sum += buf[r1 + j] * buf[r1 + j + i];
     }
+    c[i] = sum;
   }
 
   // Find dip then peak
@@ -1265,6 +1272,26 @@ function buildBinMap(plotH, sr, fftSize) {
   }
 }
 
+// Pre-compute the static parts of the spectrogram semitone label grid.
+// Rebuilds only when plotH or the frequency range changes.
+let spectroLabels = null;
+function buildSpectroLabels(plotH) {
+  const logMinF = Math.log2(SPECTRO_MIN_FREQ);
+  const logMaxF = Math.log2(SPECTRO_MAX_FREQ);
+  const lowestSemi = Math.floor(Math.log2(SPECTRO_MIN_FREQ / 440) * 12);
+  const highestSemi = Math.ceil(Math.log2(SPECTRO_MAX_FREQ / 440) * 12);
+  const entries = [];
+  for (let semi = highestSemi; semi >= lowestSemi; semi--) {
+    const f = 440 * Math.pow(2, semi / 12);
+    const y = ((logMaxF - Math.log2(f)) / (logMaxF - logMinF)) * plotH;
+    if (y < 10 || y > plotH - 10) continue;
+    const noteName = freqToNoteName(f);
+    const hzLabel = f >= 1000 ? (f / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : Math.round(f) + '';
+    entries.push({ f, y, noteName, hzLabel });
+  }
+  spectroLabels = entries;
+}
+
 // FFT-based pitch detection: O(n) — used in spectro mode instead of O(n²) autocorrelation
 function detectPitchFFT(freqData, sr, fftSize) {
   const binCount = freqData.length;
@@ -1317,6 +1344,7 @@ function renderSpectrogram() {
     spectroCol = null;
     spectroMsPerPx = (SPECTRO_TIME_SEC * 1000) / plotW;
     buildBinMap(plotH, sr, analyser.fftSize);
+    buildSpectroLabels(plotH);
     // Backfill from unified buffer
     rebuildSpectrogram();
   }
@@ -1363,38 +1391,32 @@ function renderSpectrogram() {
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(spectroOC, spectroCursor, 0, spectroPlotW, plotH, leftMargin, 0, spectroPlotW, plotH);
 
-  // Note labels on left, Hz labels on right
+  // Note labels on left, Hz labels on right — entries pre-computed per-resize.
   ctx.font = labelSize + 'px monospace';
   ctx.strokeStyle = 'rgba(48,54,61,0.4)';
   ctx.lineWidth = 0.5;
   const minNoteGap = labelSize + 4;
   let lastNoteLabelY = -Infinity;
-  // Generate all semitones in the visible range
-  const lowestSemi = Math.floor(Math.log2(SPECTRO_MIN_FREQ / 440) * 12);
-  const highestSemi = Math.ceil(Math.log2(SPECTRO_MAX_FREQ / 440) * 12);
-  for (let semi = highestSemi; semi >= lowestSemi; semi--) {
-    const f = 440 * Math.pow(2, semi / 12);
-    const logF = Math.log2(f);
-    const y = ((logMaxF - logF) / (logMaxF - logMinF)) * plotH;
-    if (y < 10 || y > plotH - 10) continue;
-    const isTarget = graphTargets.some(n => NOTE_FREQ_MAP[n] && Math.abs(Math.log2(f / NOTE_FREQ_MAP[n])) < 0.01);
-    if (!isTarget && Math.abs(y - lastNoteLabelY) < minNoteGap) continue;
-    const noteName = freqToNoteName(f);
-    // Grid line
-    ctx.strokeStyle = isTarget ? 'rgba(240,136,62,0.5)' : 'rgba(48,54,61,0.4)';
-    ctx.lineWidth = isTarget ? 1.5 : 0.5;
-    ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w - rightMargin, y); ctx.stroke();
-    // Note name on left
-    ctx.textAlign = 'right';
-    ctx.fillStyle = isTarget ? '#f0883e' : '#484f58';
-    ctx.fillText(noteName, leftMargin - 4, y + 4);
-    // Hz on right
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#484f58';
-    const hzLabel = f >= 1000 ? (f / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : Math.round(f) + '';
-    ctx.fillText(hzLabel, w - rightMargin + 4, y + 4);
-    ctx.lineWidth = 0.5;
-    lastNoteLabelY = y;
+  if (spectroLabels) {
+    // Precompute target frequencies (once per frame, not per-label).
+    const targetFreqs = graphTargets.length
+      ? graphTargets.map(n => NOTE_FREQ_MAP[n]).filter(Boolean) : null;
+    for (let i = 0; i < spectroLabels.length; i++) {
+      const { f, y, noteName, hzLabel } = spectroLabels[i];
+      const isTarget = targetFreqs ? targetFreqs.some(tf => Math.abs(f - tf) < tf * 0.006) : false;
+      if (!isTarget && Math.abs(y - lastNoteLabelY) < minNoteGap) continue;
+      ctx.strokeStyle = isTarget ? 'rgba(240,136,62,0.5)' : 'rgba(48,54,61,0.4)';
+      ctx.lineWidth = isTarget ? 1.5 : 0.5;
+      ctx.beginPath(); ctx.moveTo(leftMargin, y); ctx.lineTo(w - rightMargin, y); ctx.stroke();
+      ctx.textAlign = 'right';
+      ctx.fillStyle = isTarget ? '#f0883e' : '#484f58';
+      ctx.fillText(noteName, leftMargin - 4, y + 4);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#484f58';
+      ctx.fillText(hzLabel, w - rightMargin + 4, y + 4);
+      ctx.lineWidth = 0.5;
+      lastNoteLabelY = y;
+    }
   }
 
   // Target zone (fill + dashed lines, matching pitch view)
@@ -2145,6 +2167,20 @@ let pauseStartTime = 0;
 let pausedAtTime = 0; // frozen Date.now() for pitch graph rendering
 let pauseStartPerf = 0; // frozen performance.now() for spectrogram/unified buffer
 
+// Cached DOM refs + last-written values so we only touch the DOM on change.
+let noteNameEl = null, noteCentsEl = null, noteFreqEl = null;
+let lastNoteName = null, lastNoteCents = null, lastNoteFreq = null;
+let lastCentsClass = null, lastNameColor = null;
+function cacheStatusEls() {
+  noteNameEl = document.getElementById('noteName');
+  noteCentsEl = document.getElementById('noteCents');
+  noteFreqEl = document.getElementById('noteFreq');
+}
+function setText(el, lastRef, val) {
+  if (el.textContent !== val) el.textContent = val;
+  return val;
+}
+
 function mainLoop() {
   if (graphPaused) {
     // Still render the frozen graph so overlays (cursor line, custom lines) update
@@ -2165,64 +2201,54 @@ function mainLoop() {
     : detectPitch();
   const freq = smoothedPitch(rawFreq);
 
-  const noteNameEl = document.getElementById('noteName');
-  const noteCentsEl = document.getElementById('noteCents');
-  const noteFreqEl = document.getElementById('noteFreq');
+  if (!noteNameEl) cacheStatusEls();
 
   if (freq) {
     const info = freqToNote(freq);
     if (info) {
-      noteNameEl.textContent = info.note;
-      noteFreqEl.textContent = freq.toFixed(1) + ' Hz';
+      if (info.note !== lastNoteName) { noteNameEl.textContent = info.note; lastNoteName = info.note; }
+      const freqText = freq.toFixed(1) + ' Hz';
+      if (freqText !== lastNoteFreq) { noteFreqEl.textContent = freqText; lastNoteFreq = freqText; }
 
       const tFreq = targetNoteKey ? NOTE_FREQ_MAP[targetNoteKey] : null;
+      let centsText, centsClass, nameColor;
       if (tFreq) {
         // Single-note feedback (warmup, counting, resonance)
         const centsOff = Math.round(1200 * Math.log2(freq / tFreq));
-        const absCents = Math.abs(centsOff);
-        const state = classifyPitch(absCents);
+        const state = classifyPitch(Math.abs(centsOff));
         if (state === 'on') {
-          noteCentsEl.textContent = 'On pitch!';
-          noteCentsEl.className = 'note-cents on';
-          noteNameEl.style.color = 'var(--success)';
-        } else if (state === 'close') {
-          noteCentsEl.textContent = (centsOff > 0 ? '+' : '') + centsOff + ' cents';
-          noteCentsEl.className = 'note-cents ' + (centsOff > 0 ? 'sharp' : 'flat');
-          noteNameEl.style.color = 'var(--warning)';
+          centsText = 'On pitch!'; centsClass = 'note-cents on'; nameColor = 'var(--success)';
         } else {
-          noteCentsEl.textContent = (centsOff > 0 ? '+' : '') + centsOff + ' cents';
-          noteCentsEl.className = 'note-cents ' + (centsOff > 0 ? 'sharp' : 'flat');
-          noteNameEl.style.color = 'var(--danger)';
+          centsText = (centsOff > 0 ? '+' : '') + centsOff + ' cents';
+          centsClass = 'note-cents ' + (centsOff > 0 ? 'sharp' : 'flat');
+          nameColor = state === 'close' ? 'var(--warning)' : 'var(--danger)';
         }
       } else if (graphZone) {
         // Zone feedback (blend, sentences, free practice)
-        const zLow = NOTE_FREQ_MAP[graphZone.low];
-        const zHigh = NOTE_FREQ_MAP[graphZone.high];
-        const zState = classifyZone(freq, zLow, zHigh);
-        noteCentsEl.textContent = (info.cents > 0 ? '+' : '') + info.cents + ' cents';
+        const zState = classifyZone(freq, NOTE_FREQ_MAP[graphZone.low], NOTE_FREQ_MAP[graphZone.high]);
+        centsText = (info.cents > 0 ? '+' : '') + info.cents + ' cents';
         if (zState === 'on') {
-          noteCentsEl.className = 'note-cents on';
-          noteNameEl.style.color = 'var(--success)';
-        } else if (zState === 'close') {
-          noteCentsEl.className = 'note-cents ' + (info.cents > 0 ? 'sharp' : 'flat');
-          noteNameEl.style.color = 'var(--warning)';
+          centsClass = 'note-cents on'; nameColor = 'var(--success)';
         } else {
-          noteCentsEl.className = 'note-cents ' + (info.cents > 0 ? 'sharp' : 'flat');
-          noteNameEl.style.color = 'var(--danger)';
+          centsClass = 'note-cents ' + (info.cents > 0 ? 'sharp' : 'flat');
+          nameColor = zState === 'close' ? 'var(--warning)' : 'var(--danger)';
         }
       } else {
-        noteCentsEl.textContent = (info.cents > 0 ? '+' : '') + info.cents + ' cents';
-        noteCentsEl.className = 'note-cents';
-        noteNameEl.style.color = 'var(--text)';
+        centsText = (info.cents > 0 ? '+' : '') + info.cents + ' cents';
+        centsClass = 'note-cents';
+        nameColor = 'var(--text)';
       }
+      if (centsText !== lastNoteCents) { noteCentsEl.textContent = centsText; lastNoteCents = centsText; }
+      if (centsClass !== lastCentsClass) { noteCentsEl.className = centsClass; lastCentsClass = centsClass; }
+      if (nameColor !== lastNameColor) { noteNameEl.style.color = nameColor; lastNameColor = nameColor; }
 
       pitchHistory.push({ time: Date.now(), freq });
     }
   } else {
-    noteNameEl.textContent = '--';
-    noteNameEl.style.color = 'var(--text2)';
-    noteCentsEl.innerHTML = '&nbsp;';
-    noteFreqEl.innerHTML = '&nbsp;';
+    if (lastNoteName !== '--') { noteNameEl.textContent = '--'; lastNoteName = '--'; }
+    if (lastNameColor !== 'var(--text2)') { noteNameEl.style.color = 'var(--text2)'; lastNameColor = 'var(--text2)'; }
+    if (lastNoteCents !== ' ') { noteCentsEl.textContent = ' '; lastNoteCents = ' '; lastCentsClass = null; }
+    if (lastNoteFreq !== ' ') { noteFreqEl.textContent = ' '; lastNoteFreq = ' '; }
   }
 
   // Write to unified buffer at fixed slot rate
@@ -2769,6 +2795,6 @@ try {
   }
 } catch(e) {}
 </script>
-<div class="app-footer">v1.3.0 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
+<div class="app-footer">v1.3.1 &copy; Aida Paul &lt;<a href="mailto:aida.paul@proton.me">aida.paul@proton.me</a>&gt; &mdash; BSD License</div>
 </body>
 </html>
