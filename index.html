@@ -74,9 +74,10 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 .target-picker { display: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: absolute; right: 24px; top: 60px; z-index: 20; min-width: 220px; }
 .target-picker.open { display: block; }
 .target-picker label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 4px; }
-.target-picker select { width: 100%; margin-bottom: 8px; }
+.target-picker select, .target-picker input[type="text"] { width: 100%; margin-bottom: 8px; box-sizing: border-box; padding: 6px 8px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-family: monospace; font-size: 14px; }
+.target-picker input[type="text"]:focus { outline: none; border-color: var(--accent); }
 .target-picker .tp-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-.target-picker .tp-row select { flex: 1; }
+.target-picker .tp-row select, .target-picker .tp-row input[type="text"] { flex: 1; margin-bottom: 0; }
 .vol-control { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .vol-control label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
 .vol-control input[type=range] { width: 80px; accent-color: var(--target); }
@@ -151,6 +152,11 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
 #main.focus-mode .stage-nav,
 #main.focus-mode .stage-content,
 #main.focus-mode .footer-nav { display: none; }
+#main.focus-mode { display: flex !important; flex-direction: column; height: 100vh; box-sizing: border-box; padding-top: 12px; padding-bottom: 12px; overflow: hidden; }
+#main.focus-mode .header { flex: 0 0 auto; margin-bottom: 8px; }
+#main.focus-mode .pitch-panel { flex: 1 1 auto; display: flex; flex-direction: column; margin-bottom: 0; min-height: 0; }
+#main.focus-mode .pitch-panel > .canvas-wrap { flex: 1 1 auto; min-height: 0; }
+#main.focus-mode #pitchCanvas { height: 100% !important; min-height: 0 !important; }
 #focusToggleBtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* Responsive */
@@ -255,19 +261,20 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
             <option value="range">Note range</option>
           </select>
           <div id="tpSingle">
-            <label>Note</label>
-            <select id="tpNote"></select>
+            <label>Note <span style="opacity:0.6;">(type to filter)</span></label>
+            <input type="text" id="tpNote" list="tpNoteList" autocomplete="off" spellcheck="false" placeholder="e.g. C4">
           </div>
           <div id="tpRange" style="display:none;">
             <div class="tp-row">
               <label style="min-width:30px;">Low</label>
-              <select id="tpLow"></select>
+              <input type="text" id="tpLow" list="tpNoteList" autocomplete="off" spellcheck="false">
             </div>
             <div class="tp-row">
               <label style="min-width:30px;">High</label>
-              <select id="tpHigh"></select>
+              <input type="text" id="tpHigh" list="tpNoteList" autocomplete="off" spellcheck="false">
             </div>
           </div>
+          <datalist id="tpNoteList"></datalist>
           <div style="display:flex;gap:6px;margin-top:4px;">
             <button class="sm primary" id="tpApply">Apply</button>
             <button class="sm" id="tpReset">Reset to stage default</button>
@@ -297,7 +304,7 @@ select { font-family: inherit; background: var(--surface2); color: var(--text); 
         </div>
       </div>
     </div>
-    <div style="position:relative;">
+    <div class="canvas-wrap" style="position:relative;">
       <canvas id="pitchCanvas"></canvas>
       <div class="cursor-note" id="cursorNote"></div>
     </div>
@@ -2196,10 +2203,15 @@ document.getElementById('startBtn').addEventListener('click', async () => {
   renderCustomLinesList();
 
   // Target picker
-  const tpNoteOpts = ALL_NOTES.map(n => `<option value="${n}">${n}</option>`).join('');
-  document.getElementById('tpNote').innerHTML = tpNoteOpts;
-  document.getElementById('tpLow').innerHTML = tpNoteOpts;
-  document.getElementById('tpHigh').innerHTML = tpNoteOpts;
+  const tpNoteOpts = ALL_NOTES.map(n => `<option value="${n}">`).join('');
+  document.getElementById('tpNoteList').innerHTML = tpNoteOpts;
+
+  // Normalize user input: "c4" → "C4", and validate against ALL_NOTES
+  function normalizeNote(raw) {
+    if (!raw) return null;
+    const v = raw.trim().toUpperCase().replace(/\s+/g, '');
+    return ALL_NOTES.includes(v) ? v : null;
+  }
 
   let stageDefaultTarget = null; // stores what renderCurrentStage set
 
@@ -2222,8 +2234,14 @@ document.getElementById('startBtn').addEventListener('click', async () => {
 
   document.getElementById('targetNote').addEventListener('click', () => {
     const picker = document.getElementById('targetPicker');
-    if (!picker.classList.contains('open')) syncPickerToState();
+    const wasOpen = picker.classList.contains('open');
+    if (!wasOpen) syncPickerToState();
     picker.classList.toggle('open');
+    if (!wasOpen) {
+      const mode = document.getElementById('tpMode').value;
+      const el = document.getElementById(mode === 'single' ? 'tpNote' : 'tpLow');
+      setTimeout(() => { el.focus(); el.select(); }, 0);
+    }
   });
 
   document.getElementById('tpMode').addEventListener('change', e => {
@@ -2231,11 +2249,19 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     document.getElementById('tpRange').style.display = e.target.value === 'range' ? '' : 'none';
   });
 
-  document.getElementById('tpApply').addEventListener('click', () => {
+  function flashInvalid(el) {
+    el.style.borderColor = 'var(--danger)';
+    setTimeout(() => { el.style.borderColor = ''; }, 600);
+  }
+
+  function applyTargetPicker() {
     const mode = document.getElementById('tpMode').value;
     const stageId = ROUTINE.stages[currentStage].id;
     if (mode === 'single') {
-      const note = document.getElementById('tpNote').value;
+      const noteEl = document.getElementById('tpNote');
+      const note = normalizeNote(noteEl.value);
+      if (!note) { flashInvalid(noteEl); return; }
+      noteEl.value = note;
       graphTargets = [note];
       targetNoteKey = note;
       graphCenterFreq = NOTE_FREQ_MAP[note];
@@ -2257,8 +2283,13 @@ document.getElementById('startBtn').addEventListener('click', async () => {
         document.getElementById('targetNote').textContent = note;
       }
     } else {
-      const low = document.getElementById('tpLow').value;
-      const high = document.getElementById('tpHigh').value;
+      const lowEl = document.getElementById('tpLow');
+      const highEl = document.getElementById('tpHigh');
+      const low = normalizeNote(lowEl.value);
+      const high = normalizeNote(highEl.value);
+      if (!low) { flashInvalid(lowEl); return; }
+      if (!high) { flashInvalid(highEl); return; }
+      lowEl.value = low; highEl.value = high;
       graphTargets = [];
       graphZone = { low, high };
       targetNoteKey = null;
@@ -2268,6 +2299,15 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     }
     updateTargetRefBtn();
     document.getElementById('targetPicker').classList.remove('open');
+  }
+
+  document.getElementById('tpApply').addEventListener('click', applyTargetPicker);
+
+  // Enter inside any picker input applies
+  ['tpNote', 'tpLow', 'tpHigh'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); applyTargetPicker(); }
+    });
   });
 
   document.getElementById('tpReset').addEventListener('click', () => {
@@ -2313,6 +2353,8 @@ document.getElementById('startBtn').addEventListener('click', async () => {
 
   // Spacebar pause/unpause
   document.addEventListener('keydown', e => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.code === 'Space' && document.getElementById('main').style.display === 'block') {
       e.preventDefault();
       graphPaused = !graphPaused;
